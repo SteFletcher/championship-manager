@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Championship Manager</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="titlebar">
+    <span class="titlebar-brand">CHAMPIONSHIP MANAGER</span>
+    <span class="titlebar-note" id="hud"></span>
+  </header>
+
+  <main id="app">
+
+    <!-- New game / continue -->
+    <section id="start-screen">
+      <h1>Start a career</h1>
+      <p class="hint">Enter your name, choose a club, and take the hot seat.</p>
+      <div class="start-form">
+        <label for="manager-name">Manager name</label>
+        <input id="manager-name" type="text" value="Alex Ferguson" maxlength="30">
+        <button id="continue-save-btn" class="btn" hidden>Continue saved game</button>
+      </div>
+      <div class="select-layout">
+        <table class="team-table" aria-label="Clubs">
+          <thead>
+            <tr><th>Club</th><th>Div</th><th>GK</th><th>DEF</th><th>MID</th><th>ATT</th><th>Overall</th><th>Board expects</th></tr>
+          </thead>
+          <tbody id="team-rows"></tbody>
+        </table>
+        <aside class="squad-panel" aria-live="polite">
+          <h2 id="squad-title">Squad</h2>
+          <table class="squad-table">
+            <thead><tr><th>Pos</th><th>Name</th><th>Age</th><th>Att</th><th>Def</th></tr></thead>
+            <tbody id="squad-rows"><tr><td colspan="5" class="empty">Hover a club to inspect its squad</td></tr></tbody>
+          </table>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Management hub -->
+    <section id="hub-screen" hidden>
+      <div class="hub-layout">
+        <nav class="sidebar" aria-label="Sections">
+          <button class="btn continue-btn" id="continue-btn">Continue ▸</button>
+          <div class="nav-group" id="nav-buttons">
+            <button class="nav-btn" data-screen="inbox">Inbox <span class="badge" id="inbox-badge" hidden></span></button>
+            <button class="nav-btn" data-screen="squad">Squad</button>
+            <button class="nav-btn" data-screen="tactics">Tactics</button>
+            <button class="nav-btn" data-screen="fixtures">Fixtures</button>
+            <button class="nav-btn" data-screen="table">League Table</button>
+            <button class="nav-btn" data-screen="cup">Cup</button>
+            <button class="nav-btn" data-screen="transfers">Transfers</button>
+            <button class="nav-btn" data-screen="finances">Finances</button>
+            <button class="nav-btn" data-screen="club">Club &amp; Board</button>
+          </div>
+          <div class="sidebar-foot">
+            <button class="btn" id="save-btn">Save game</button>
+            <span class="save-note" id="save-note"></span>
+          </div>
+        </nav>
+        <div id="hub-content" class="hub-content"></div>
+      </div>
+    </section>
+
+    <!-- Match day -->
+    <section id="match-screen" hidden>
+      <div id="prematch" hidden>
+        <h1 id="prematch-title"></h1>
+        <p class="hint" id="prematch-sub"></p>
+        <div class="prematch-grid prematch-grid-3">
+          <div>
+            <h2 class="panel-title">Your line-up</h2>
+            <table class="squad-table"><tbody id="prematch-xi"></tbody></table>
+          </div>
+          <div>
+            <h2 class="panel-title">Bench</h2>
+            <table class="squad-table"><tbody id="prematch-bench"></tbody></table>
+            <div class="prematch-actions">
+              <button class="btn btn-primary" id="play-match-btn">Kick off</button>
+            </div>
+          </div>
+          <div class="opposition-report">
+            <h2 class="panel-title">Opposition report</h2>
+            <div id="opp-summary" class="news-body"></div>
+            <table class="squad-table"><tbody id="opp-xi"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div id="matchday" hidden>
+        <div class="scoreboard" id="scoreboard">
+          <span class="score-team" id="score-home"></span>
+          <span class="score-mid">
+            <span class="score-nums" id="score-nums">0 - 0</span>
+            <span class="score-clock" id="score-clock">0'</span>
+            <span class="score-att" id="score-att"></span>
+          </span>
+          <span class="score-team" id="score-away"></span>
+        </div>
+
+        <div class="match-layout">
+          <div class="match-left">
+            <div class="speed-bar">
+              <span class="speed-label">Speed</span>
+              <button class="btn speed-btn active" data-speed="250">Normal</button>
+              <button class="btn speed-btn" data-speed="60">Fast</button>
+              <button class="btn speed-btn" data-speed="0">Instant</button>
+              <button class="btn" id="pause-btn">Pause</button>
+              <span class="pause-reason" id="pause-reason"></span>
+            </div>
+
+            <div class="sub-panel" id="sub-panel" hidden>
+              <div class="tactics-controls match-tactics">
+                <label>Formation <select id="match-formation"></select></label>
+                <label>Mentality <select id="match-mentality"></select></label>
+              </div>
+              <h2 class="panel-title">Substitution <span id="subs-left"></span></h2>
+              <div class="sub-grid">
+                <div><h3>On the pitch</h3><ul class="sub-list" id="sub-off-list"></ul></div>
+                <div><h3>Bench</h3><ul class="sub-list" id="sub-on-list"></ul></div>
+              </div>
+              <button class="btn btn-primary" id="make-sub-btn" disabled>Make substitution</button>
+            </div>
+
+            <ul class="commentary" id="commentary" aria-live="polite"></ul>
+
+            <div class="fulltime" id="fulltime" hidden>
+              <h2>Full time</h2>
+              <div class="scorers" id="scorers"></div>
+              <div class="motm" id="motm"></div>
+              <table class="stats-table" aria-label="Match statistics">
+                <tbody id="stats-rows"></tbody>
+              </table>
+              <div class="fulltime-actions">
+                <button id="post-continue-btn" class="btn btn-primary">Continue ▸</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="match-right">
+            <div class="pitch" id="pitch" aria-label="Formation view">
+              <div class="pitch-markings">
+                <div class="pm-halfway"></div>
+                <div class="pm-circle"></div>
+                <div class="pm-box pm-box-top"></div>
+                <div class="pm-box pm-box-bottom"></div>
+                <div class="pm-six pm-six-top"></div>
+                <div class="pm-six pm-six-bottom"></div>
+              </div>
+              <div class="pitch-label pitch-label-top" id="pitch-away-label"></div>
+              <div class="pitch-label pitch-label-bottom" id="pitch-home-label"></div>
+              <div id="pitch-players"></div>
+            </div>
+
+            <div class="player-stats">
+              <div class="player-tabs" role="tablist">
+                <button class="btn tab-btn active" id="tab-home" role="tab" aria-selected="true"></button>
+                <button class="btn tab-btn" id="tab-away" role="tab" aria-selected="false"></button>
+              </div>
+              <table class="player-table" aria-label="Player statistics">
+                <thead>
+                  <tr>
+                    <th>Pos</th><th>Name</th><th title="Passes">Ps</th><th title="Tackles">Tk</th>
+                    <th title="Shots">Sh</th><th title="Goals">Gl</th><th title="Assists">As</th>
+                    <th title="Saves">Sv</th><th title="Fouls">Fl</th><th title="Rating">Rat</th>
+                  </tr>
+                </thead>
+                <tbody id="player-rows"></tbody>
+              </table>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

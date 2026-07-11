@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local environment
+.env
+.env.local
+
+# Puppeteer / browser-smoke artefacts (kept out of git)
+*.png
+!design/screenshots/*.png
+
+# Agent session/plan metadata (not project code)
+.plans/

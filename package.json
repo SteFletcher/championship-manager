@@ -1,0 +1,13 @@
+{
+  "name": "champman",
+  "version": "0.1.0",
+  "description": "Championship manager style game in the browser",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "serve": "python3 -m http.server 8123"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.3.0"
+  }
+}

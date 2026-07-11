@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02 · Architecture — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 02 · Architecture</span>
+    <span class="spacer"></span>
+    <span class="meta">SAD · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html" class="active">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>02 · System Architecture</h1>
+      <p class="subtitle">Software Architecture Description (SAD)</p>
+
+      <h2>1. Architectural Style</h2>
+      <p>Champman is a <strong>layered, engine-first single-page application</strong> with a
+      strict separation between pure game logic and imperative UI. The design rests on
+      three principles:</p>
+      <ol>
+        <li><strong>Engine purity.</strong> Every module under <code>src/engine/</code> is a
+        pure ES module with no DOM access and no framework. It runs identically in the
+        browser and in Node, which is what makes the 148-test suite possible without a
+        DOM shim.</li>
+        <li><strong>Single source of randomness.</strong> One seeded mulberry32 RNG instance
+        threads through the entire career. Determinism is a first-class architectural
+        property, not an afterthought.</li>
+        <li><strong>UI as a thin client.</strong> <code>js/app.js</code> only renders state
+        produced by the engine and forwards user gestures back to engine methods. It owns
+        no game rules.</li>
+      </ol>
+
+      <div class="callout blue">
+        <span class="label">Key trade-off</span>
+        <p>The purity boundary costs a little boilerplate (the engine returns plain data
+        objects the UI must re-render from) but buys deterministic testability and a
+        clean place to put the entire game's correctness. This is the single most
+        important decision in the architecture.</p>
+      </div>
+
+      <h2>2. Layer Diagram</h2>
+      <div class="diagram">
+<pre>
+┌──────────────────────────────────────────────────────────────────┐
+│                        BROWSER (DOM)                             │
+│  index.html · css/style.css                                      │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  js/app.js   — UI controller (1121 LOC)                    │  │
+│  │  • start screen · hub shell · match day                    │  │
+│  │  • renders engine state · paces the match timer            │  │
+│  │  • localStorage save/load orchestration                    │  │
+│  └───────────────┬──────────────────────────────┬─────────────┘  │
+│          reads / renders                forwards gestures        │
+└──────────────────┼──────────────────────────────┼────────────────┘
+                   ▼                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  ENGINE LAYER (pure ES modules)                  │
+│                                                                  │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │  game.js  — Game class (career orchestrator, 1122 LOC)   │   │
+│   │  weeks · finances · board · news · awards · scouting     │   │
+│   │  stadium · job market · transfers glue · save/restore    │   │
+│   └──┬───────┬────────┬────────┬─────────┬──────────┬────────┘   │
+│      │       │        │        │         │          │            │
+│      ▼       ▼        ▼        ▼         ▼          ▼            │
+│  ┌───────┐┌──────┐┌──────┐┌────────┐┌────────┐┌──────────┐      │
+│  │match  ││season││ cup  ││ league ││transfers││ players  │      │
+│  │ .js   ││ .js  ││ .js  ││  .js   ││  .js   ││  .js     │      │
+│  └───┬───┘└──────┘└──────┘└────────┘└────────┘└────┬─────┘      │
+│      │            ┌──────────┐                      │            │
+│      └────────────│  team.js │◄─────────────────────┘            │
+│                   │ formations│                                  │
+│                   │ selectXI  │                                  │
+│                   └─────┬────┘                                  │
+│                         │                                        │
+│                         ▼                                        │
+│                   ┌───────────┐                                  │
+│                   │  rng.js   │  seeded mulberry32               │
+│                   │ (single   │  serializable state              │
+│                   │  source)  │                                  │
+│                   └───────────┘                                  │
+└──────────────────────────────────────────────────────────────────┘
+                  ▲
+          ┌────────────────┐
+          │ src/data/      │  24 clubs, deterministic squad
+          │  teams.js      │  generation from club name
+          └────────────────┘
+</pre>
+      </div>
+
+      <h2>3. Module Catalogue</h2>
+      <table class="grid">
+        <thead><tr><th>Module</th><th>LOC</th><th>Responsibility</th><th>Exports</th></tr></thead>
+        <tbody>
+          <tr><td><code>rng.js</code></td><td>59</td><td>Seeded PRNG + string hashing</td><td><code>createRng</code>, <code>hashString</code></td></tr>
+          <tr><td><code>players.js</code></td><td>94</td><td>Player creation, valuation, development</td><td><code>createPlayer</code>, <code>ability</code>, <code>fairValue</code>, <code>developPlayer</code>, <code>isAvailable</code></td></tr>
+          <tr><td><code>team.js</code></td><td>157</td><td>Formations, lineup selection, ratings</td><td><code>FORMATIONS</code>, <code>MENTALITIES</code>, <code>selectXI</code>, <code>validateTeam</code>, <code>teamRatings</code>, <code>overallRating</code></td></tr>
+          <tr><td><code>match.js</code></td><td>867</td><td>Resumable minute-by-minute match simulation</td><td><code>MatchSim</code>, <code>simulateMatch</code></td></tr>
+          <tr><td><code>league.js</code></td><td>79</td><td>Round-robin fixtures + table computation</td><td><code>generateFixtures</code>, <code>computeTable</code></td></tr>
+          <tr><td><code>cup.js</code></td><td>91</td><td>Knockout draw with byes, round naming</td><td><code>createCup</code>, <code>advanceCup</code>, <code>cupRoundNames</code>, <code>inCup</code></td></tr>
+          <tr><td><code>season.js</code></td><td>34</td><td>Calendar merging league + cup weeks</td><td><code>buildCalendar</code>, <code>monthName</code></td></tr>
+          <tr><td><code>transfers.js</code></td><td>73</td><td>Valuations, negotiation, AI interest</td><td><code>askingPrice</code>, <code>evaluateBid</code>, <code>wageDemand</code>, <code>aiInterest</code></td></tr>
+          <tr><td><code>game.js</code></td><td>1122</td><td>Career orchestrator &amp; state owner</td><td><code>Game</code> class</td></tr>
+          <tr><td><code>teams.js</code> (data)</td><td>136</td><td>24 clubs + deterministic squad generation</td><td><code>TEAMS</code>, <code>buildClubs</code>, <code>clubFinances</code></td></tr>
+          <tr><td><code>app.js</code> (UI)</td><td>1121</td><td>UI controller</td><td>— (side-effect on import)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Dependency Rules</h2>
+      <ul>
+        <li>The dependency graph is a <strong>DAG with rng.js as the root</strong>. No cycles.</li>
+        <li><code>game.js</code> depends on every engine module; it is the only module that composes the subsystems.</li>
+        <li><code>match.js</code> depends only on <code>rng.js</code> and <code>team.js</code> — it knows nothing about seasons, finances, or transfers.</li>
+        <li><code>app.js</code> imports <code>Game</code> and a few helpers (<code>teamRatings</code>, <code>overallRating</code>, <code>ability</code>) for display; it never imports <code>match.js</code> directly.</li>
+        <li>The data module <code>teams.js</code> depends on <code>rng.js</code> and <code>players.js</code> only — so the world can be rebuilt deterministically without the full engine.</li>
+      </ul>
+
+      <h2>5. The Determinism Contract</h2>
+      <p>Determinism is enforced by three rules that every engine author must obey:</p>
+      <div class="callout gold">
+        <span class="label">Rule 1 — One RNG</span>
+        <p>All randomness flows through a <code>createRng(seed)</code> instance. <code>Math.random()</code>
+        appears exactly once in the entire engine, in <code>match.js</code>, solely to generate a
+        seed when none is supplied. The career's RNG lives on <code>game.rng</code> and its state
+        is serialized with the save.</p>
+      </div>
+      <div class="callout gold">
+        <span class="label">Rule 2 — Serializable state</span>
+        <p>The RNG exposes <code>getState()</code> / <code>setState()</code>. <code>Game.serialize()</code>
+        captures <code>rngState</code> alongside all club/world state; <code>Game.restore()</code>
+        reconstructs the instance and re-injects the RNG state, so a resumed career draws the
+        same future random numbers as the original.</p>
+      </div>
+      <div class="callout gold">
+        <span class="label">Rule 3 — No hidden mutation</span>
+        <p>The match engine <em>never mutates</em> the player objects it is given; per-match state
+        lives in <code>stat line</code> objects keyed by player id. This keeps the squad objects
+        stable across the sim and the UI.</p>
+      </div>
+
+      <h2>6. Control Flow — The Week Loop</h2>
+      <p>The heartbeat of the career is <code>Game.advanceWeek()</code>. Every "Continue" click
+      either routes the user into a live match or, if there is no user fixture, runs the week
+      headlessly. The diagram shows the sequence.</p>
+      <div class="diagram">
+<pre>
+User clicks "Continue ▸"
+        │
+        ▼
+  Game.userFixture()? ──── no ──► Game.advanceWeek(null)  [auto-sim user match]
+        │ yes                          │
+        ▼                              ▼
+  show pre-match screen          play league round (both divisions)
+        │                         play cup round (if a cup week)
+        ▼                         apply results → morale/form/condition/injuries/bans
+  kick off → MatchSim            gate receipts + attendance
+  (live, minute-by-minute)       weekly upkeep (wages, condition recovery, injury tick)
+        │                         stadium expansion tick
+        ▼                         scout report tick
+  full time → advanceWeek(result) AI transfer activity + maybe AI offer for user player
+        │                         board confidence update → maybe sack
+        ▼                         week++ ; monthly awards? ; season end?
+  saveGame()                      return lastResults
+        │
+        ▼
+  render week summary
+</pre>
+      </div>
+
+      <h2>7. Match Engine Internals</h2>
+      <p><code>MatchSim</code> is a stateful object exposing <code>playMinute()</code> (returns the
+      events generated that minute), <code>setTactics()</code>, <code>makeSub()</code>, and
+      <code>finish()</code>. Internally each minute:</p>
+      <ol>
+        <li>Runs AI tactics policy (chase / shut up shop) and AI auto-sub policy for both sides.</li>
+        <li>Resolves the midfield battle to decide possession.</li>
+        <li>Generates quiet build-up play (passes, tackles) that feed the live ratings.</li>
+        <li>Resolves fouls and cards (yellow → second-yellow → straight red).</li>
+        <li>Resolves injuries with weighted victim selection and forced auto-subs.</li>
+        <li>Decides whether the attacking side fashions a chance, then resolves it (miss / block / save / goal).</li>
+        <li>Decays condition for every player on the pitch.</li>
+        <li>Pushes a timeline snapshot (for replay/debug) and checks for stage end.</li>
+      </ol>
+      <p>The unit-strength model is deliberately headcount-aware: a formation packing a unit
+      strengthens it with diminishing returns, so 5-3-2 genuinely defends and 4-3-3 genuinely
+      attacks — but midfield headcount moves possession only gently, so it doesn't drown out
+      defensive/attacking intent.</p>
+
+      <h2>8. Persistence Model</h2>
+      <p>Saves are a single JSON blob in <code>localStorage['champman-save']</code>. The shape is
+      a flat snapshot of the <code>Game</code> instance minus the RNG object (whose state is
+      stored separately as <code>rngState</code>).</p>
+      <pre><code>{
+  version: 6,
+  managerName, clubName,
+  rngState,                 // ← the determinism key
+  clubs: [...],             // full world state
+  freeAgents, seasonIndex, week, calendar, fixtures,
+  results, cup, cupResults,
+  seasonStats, monthly, inbox, pendingOffers, nextOfferId,
+  board, tactics, history, youthSeq,
+  sacked, reputation, jobOffers, pendingJobOffer,
+  scouted, pendingScouts
+}</code></pre>
+      <p>Restore constructs a throwaway <code>Game</code> (to get the class brand needed for private
+      methods) and then <code>Object.assign</code>s the saved fields over it before re-injecting
+      the RNG state. A version mismatch throws, refusing to load incompatible saves.</p>
+
+      <h2>9. Deployment &amp; Runtime Topology</h2>
+      <table class="grid">
+        <thead><tr><th>Aspect</th><th>Choice</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td>Serving</td><td>Any static server (<code>python3 -m http.server</code>)</td><td>No build, no bundler, no SSR</td></tr>
+          <tr><td>Module loading</td><td>Native ES modules in the browser</td><td><code>&lt;script type="module"&gt;</code> loads <code>js/app.js</code>, which imports the engine</td></tr>
+          <tr><td>State store</td><td><code>localStorage</code></td><td>Zero infrastructure; survives reloads</td></tr>
+          <tr><td>Testing runtime</td><td>Node <code>--test</code></td><td>Engine modules import directly with no DOM</td></tr>
+          <tr><td>E2E runtime</td><td>puppeteer-core + a real Chromium</td><td>Drives the actual UI in a real browser</td></tr>
+        </tbody>
+      </table>
+
+      <h2>10. Architectural Decisions (ADR-style)</h2>
+      <table class="grid">
+        <thead><tr><th>Decision</th><th>Chosen</th><th>Rejected alternative</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Engine/UI split</td><td>Pure modules + thin UI</td><td>Framework component tree</td><td>Testability &amp; determinism; no framework lock-in</td></tr>
+          <tr><td>Build step</td><td>None</td><td>Webpack/Vite bundler</td><td>Fewer moving parts; instant iteration; matches retro scope</td></tr>
+          <tr><td>Match model</td><td>Stateful resumable object</td><td>Pure <code>simulate(home,away)→result</code></td><td>Live pause/subs/tactics need mutable mid-match state</td></tr>
+          <tr><td>RNG</td><td>mulberry32, single instance</td><td>Per-module RNGs or <code>Math.random</code></td><td>Replayable careers; serializable state</td></tr>
+          <tr><td>Save format</td><td>Flat JSON snapshot</td><td>Event log / delta store</td><td>Simplicity; small enough for localStorage</td></tr>
+          <tr><td>Squad data</td><td>Generated from club name hash</td><td>Hand-authored squads</td><td>24×18 players for free; deterministic &amp; compact</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="01-requirements.html">← 01 · Requirements</a> · <a href="03-data-model.html">Next: 03 · Data Model →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 02 · Architecture</footer>
+</body>
+</html>

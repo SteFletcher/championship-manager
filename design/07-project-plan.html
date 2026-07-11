@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>07 · Project Plan — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 07 · Project Plan</span>
+    <span class="spacer"></span>
+    <span class="meta">WBS · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html" class="active">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>07 · Project Plan</h1>
+      <p class="subtitle">Waterfall phases, work breakdown, milestones &amp; schedule</p>
+
+      <div class="callout blue">
+        <span class="label">Methodology note</span>
+        <p>This plan presents the work as a classical waterfall sequence — requirements,
+        design, implementation, integration, verification, deployment — which is the form the
+        user asked the existing codebase to be reverse-engineered into. In reality the codebase
+        was built incrementally with an engine-first, test-driven loop; this document
+        reconstructs the shape a up-front plan would have taken.</p>
+      </div>
+
+      <h2>1. Phase Overview</h2>
+      <div class="diagram">
+<pre>
+Phase 1          Phase 2          Phase 3          Phase 4          Phase 5          Phase 6
+Requirements  →  Architecture  →  Engine Build  →  Career Layer  →  UI &amp; Match Day →  Verification &amp; Release
+ (SRS)            (SAD/DDM/ESD)    (pure modules)   (game.js)        (app.js + CSS)   (tests + smoke)
+   │                │                 │                 │                │                │
+   ▼                ▼                 ▼                 ▼                ▼                ▼
+ gates:          gates:            gates:            gates:           gates:          gates:
+ scope frozen    design review     122 engine       career loop      screens live    148 tests green
+                                  tests green       playable headless screenshotable    E2E smoke green
+</pre>
+      </div>
+
+      <h2>2. Work Breakdown Structure</h2>
+
+      <h3>Phase 1 — Requirements (SRS)</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Deliverable</th><th>Exit criterion</th></tr></thead>
+        <tbody>
+          <tr><td>1.1</td><td>Product scope &amp; personas</td><td>Stakeholders agree in/out of scope</td></tr>
+          <tr><td>1.2</td><td>Functional requirements (CAR/MAT/SQD/TAC/TRF/FIN/NWS/SAV)</td><td>Each requirement has an ID + acceptance criterion</td></tr>
+          <tr><td>1.3</td><td>Non-functional requirements</td><td>Performance, determinism, portability targets set</td></tr>
+          <tr><td>1.4</td><td>Constraints &amp; assumptions</td><td>Browser-only, fictional data, single-player locked</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Phase 2 — Architecture &amp; Design</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Deliverable</th><th>Exit criterion</th></tr></thead>
+        <tbody>
+          <tr><td>2.1</td><td>Layered architecture &amp; module boundaries</td><td>Engine/UI purity boundary documented</td></tr>
+          <tr><td>2.2</td><td>Determinism contract (single RNG, serializable state, no hidden mutation)</td><td>3 rules written &amp; accepted</td></tr>
+          <tr><td>2.3</td><td>Data model (Game/Club/Player/Match/Cup entities)</td><td>ER diagram + field tables complete</td></tr>
+          <tr><td>2.4</td><td>Engine specifications (match loop, strength model, transfers, season loop)</td><td>Config constants table approved</td></tr>
+          <tr><td>2.5</td><td>UI design language &amp; screen flows</td><td>Wireframes + design tokens</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Phase 3 — Engine Build (pure modules)</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Module</th><th>Key outputs</th></tr></thead>
+        <tbody>
+          <tr><td>3.1</td><td><code>rng.js</code></td><td>mulberry32 + hashString</td></tr>
+          <tr><td>3.2</td><td><code>players.js</code></td><td>createPlayer, ability, fairValue, developPlayer</td></tr>
+          <tr><td>3.3</td><td><code>team.js</code></td><td>FORMATIONS, selectXI, validateTeam, ratings</td></tr>
+          <tr><td>3.4</td><td><code>match.js</code></td><td>MatchSim (resumable) + simulateMatch</td></tr>
+          <tr><td>3.5</td><td><code>league.js</code> / <code>cup.js</code> / <code>season.js</code></td><td>Fixtures, table, knockout draw, calendar</td></tr>
+          <tr><td>3.6</td><td><code>transfers.js</code></td><td>Valuation, negotiation, AI interest</td></tr>
+          <tr><td>3.7</td><td><code>teams.js</code> (data)</td><td>24 clubs, deterministic squad generation</td></tr>
+          <tr><td>3.8</td><td>Engine test suite</td><td>rng/team/match/match-sim/league-cup/player-stats tests green</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Phase-3 exit gate</span>
+        <p>The engine is fully playable headless: <code>simulateMatch</code> produces realistic
+        results, <code>generateFixtures</code> + <code>computeTable</code> produce a valid
+        season, and ~122 engine tests pass. No UI exists yet.</p>
+      </div>
+
+      <h3>Phase 4 — Career Layer</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Feature</th><th>Requirement IDs</th></tr></thead>
+        <tbody>
+          <tr><td>4.1</td><td><code>Game</code> class &amp; week loop (<code>advanceWeek</code>)</td><td>CAR-03, SAV-01</td></tr>
+          <tr><td>4.2</td><td>Finances, wages, prize money, fanbase economy</td><td>FIN-01..06</td></tr>
+          <tr><td>4.3</td><td>Board confidence, sacking, reputation, job market</td><td>CAR-05..08</td></tr>
+          <tr><td>4.4</td><td>Transfers glue (bids, AI offers, free agents, listing)</td><td>TRF-01..07</td></tr>
+          <tr><td>4.5</td><td>Scouting &amp; attribute masking, opposition reports</td><td>TRF-08..09</td></tr>
+          <tr><td>4.6</td><td>Stadium expansion</td><td>FIN-04..05</td></tr>
+          <tr><td>4.7</td><td>News, monthly &amp; seasonal awards</td><td>NWS-01..02</td></tr>
+          <tr><td>4.8</td><td>Season end (development, retirements, promotion/relegation)</td><td>CAR-04, SQD-05..07</td></tr>
+          <tr><td>4.9</td><td>Serialize / restore + version gating</td><td>SAV-01..03</td></tr>
+          <tr><td>4.10</td><td>Career integration tests</td><td>game.test.js green</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Phase 5 — UI &amp; Match Day</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Screen / feature</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>5.1</td><td>Start screen + squad inspector</td><td>Hover-to-inspect; click to start</td></tr>
+          <tr><td>5.2</td><td>Hub shell + sidebar nav + HUD</td><td>9 screens; Continue ▸ button</td></tr>
+          <tr><td>5.3</td><td>Inbox, Squad, Tactics (click-to-swap)</td><td>Inline actions; OOP tagging</td></tr>
+          <tr><td>5.4</td><td>Fixtures, Table, Cup screens</td><td>Zone shading; bracket view</td></tr>
+          <tr><td>5.5</td><td>Transfers screen with attribute masking</td><td>Scout/Bid inline</td></tr>
+          <tr><td>5.6</td><td>Finances &amp; Club/Board screens</td><td>Expansion panel; history</td></tr>
+          <tr><td>5.7</td><td>Pre-match + opposition report</td><td>Danger-man highlight</td></tr>
+          <tr><td>5.8</td><td>Live match day: scoreboard, commentary, pitch, stats</td><td>Speed control; auto-pause</td></tr>
+          <tr><td>5.9</td><td>Sub panel + mid-match tactics</td><td>Key-moment pausing</td></tr>
+          <tr><td>5.10</td><td>Full-time summary</td><td>MotM + comparative stats</td></tr>
+          <tr><td>5.11</td><td>Responsive breakpoints &amp; a11y pass</td><td>Focus states; aria-live</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Phase 6 — Verification &amp; Release</h3>
+      <table class="grid">
+        <thead><tr><th>WBS</th><th>Activity</th><th>Exit criterion</th></tr></thead>
+        <tbody>
+          <tr><td>6.1</td><td>Statistical realism harness over thousands of sims</td><td>Goal/card/possession bands met</td></tr>
+          <tr><td>6.2</td><td>Save/restore determinism roundtrip</td><td>Resumed career replays identically</td></tr>
+          <tr><td>6.3</td><td>Browser E2E smoke test</td><td>Full career flow completes in Chromium</td></tr>
+          <tr><td>6.4</td><td>Cross-browser manual pass</td><td>Loads in Chrome/Firefox/Safari with no console errors</td></tr>
+          <tr><td>6.5</td><td>README &amp; run instructions</td><td><code>npm run serve</code> + <code>npm test</code> documented</td></tr>
+          <tr><td>6.6</td><td>Release (static files, no build)</td><td>App served from any static host</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Milestones</h2>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Milestone</th><th>Phase gate</th></tr></thead>
+        <tbody>
+          <tr><td>M1</td><td>Requirements baseline signed off</td><td>End Phase 1</td></tr>
+          <tr><td>M2</td><td>Architecture &amp; data model approved</td><td>End Phase 2</td></tr>
+          <tr><td>M3</td><td>Engine playable headless (122 tests green)</td><td>End Phase 3</td></tr>
+          <tr><td>M4</td><td>Career loop playable headless (save/restore proven)</td><td>End Phase 4</td></tr>
+          <tr><td>M5</td><td>Full UI live &amp; screenshotable</td><td>End Phase 5</td></tr>
+          <tr><td>M6</td><td>148 tests green + E2E smoke green → release</td><td>End Phase 6</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Sequencing &amp; Dependencies</h2>
+      <ul>
+        <li>Phase 3 (engine) must complete before Phase 4 (career) — <code>game.js</code> composes the engine modules.</li>
+        <li>Phase 4 must complete before Phase 5 (UI) — the UI renders <code>Game</code> state.</li>
+        <li>The match-day UI (5.8–5.10) depends on the resumable <code>MatchSim</code> from Phase 3.</li>
+        <li>The browser smoke test (6.3) depends on the entire UI being live.</li>
+        <li>Statistical realism (6.1) can begin as soon as Phase 3 lands and runs in parallel with Phase 4.</li>
+      </ul>
+
+      <h2>5. Effort Profile</h2>
+      <p>The bulk of complexity is concentrated in two modules — <code>match.js</code> (867 LOC)
+      and <code>game.js</code> (1122 LOC) — which together are over half the non-test codebase.
+      Phases 3 and 4 are therefore the longest; UI work in Phase 5 is substantial but lower-risk
+      because it is a pure consumer of tested engine state.</p>
+      <div class="diagram">
+<pre>
+Effort ─┐
+        │      ████  match.js + game.js (Phase 3-4)
+        │   ██ ████  ████
+        │   ██ ████  ████  ██     UI (Phase 5)
+        │ ██ ██ ████  ████  ██  ██  verification (Phase 6)
+        │ ██ ██ ████  ████  ██  ██
+        └──┴───┴───┴───┴───┴───┴──→ phase
+           P1  P2  P3  P4  P5  P6
+</pre>
+      </div>
+
+      <h2>6. Team &amp; Roles (waterfall staffing)</h2>
+      <table class="grid">
+        <thead><tr><th>Role</th><th>Phases</th><th>Focus</th></tr></thead>
+        <tbody>
+          <tr><td>Product / requirements analyst</td><td>1, 2</td><td>SRS, scope, acceptance criteria</td></tr>
+          <tr><td>Systems architect</td><td>2, 3</td><td>Layering, determinism contract, module boundaries</td></tr>
+          <tr><td>Engine engineer</td><td>3, 4</td><td>match.js, game.js, competitions, transfers</td></tr>
+          <tr><td>QA / test engineer</td><td>3–6</td><td>Test suite, statistical harness, E2E smoke</td></tr>
+          <tr><td>Frontend engineer</td><td>5</td><td>app.js, index.html, css</td></tr>
+          <tr><td>Release engineer</td><td>6</td><td>Static hosting, README, cross-browser pass</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="06-test-plan.html">← 06 · Test Plan</a> · <a href="08-risk-register.html">Next: 08 · Risks →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 07 · Project Plan</footer>
+</body>
+</html>

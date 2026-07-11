@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04 · Engine Specs — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 04 · Engine Specs</span>
+    <span class="spacer"></span>
+    <span class="meta">ESD · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html" class="active">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>04 · Engine Specifications</h1>
+      <p class="subtitle">Detailed specifications for the simulation &amp; game-loop subsystems</p>
+
+      <h2>1. RNG Subsystem</h2>
+      <p>Source: <code>src/engine/rng.js</code>. A mulberry32 PRNG with a serializable 32-bit state.</p>
+      <table class="grid">
+        <thead><tr><th>API</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td><code>createRng(seed)</code></td><td>Returns an RNG with state seeded from a u32.</td></tr>
+          <tr><td><code>next()</code></td><td>Float in [0, 1).</td></tr>
+          <tr><td><code>int(min, max)</code></td><td>Inclusive integer pick.</td></tr>
+          <tr><td><code>chance(p)</code></td><td>Boolean, true with probability p.</td></tr>
+          <tr><td><code>pick(items)</code></td><td>Uniform array pick.</td></tr>
+          <tr><td><code>weightedPick(entries)</code></td><td>Picks <code>{item, weight}</code> by weight.</td></tr>
+          <tr><td><code>getState()/setState(s)</code></td><td>Serialize/restore — used by save games.</td></tr>
+          <tr><td><code>hashString(str)</code></td><td>FNV-1a 32-bit hash; derives seeds from club names.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Determinism proof</span>
+        <p>The test <code>"identical seeds replay the identical match"</code> deep-equals two
+        <code>simulateMatch</code> results with the same seed. <code>hashString</code> guarantees
+        the same club always produces the same squad, so a fresh career is reproducible from
+        the manager name + club + seed alone.</p>
+      </div>
+
+      <h2>2. Match Simulation Engine</h2>
+      <p>Source: <code>src/engine/match.js</code> (867 LOC). The most complex subsystem.</p>
+
+      <h3>2.1 Public API</h3>
+      <pre><code>class MatchSim {
+  constructor(home, away, options)   // {seed?, knockout?, timeline?, homeAdvantage?, autoSubs?}
+  playMinute()                       // → Event[] for that minute
+  setTactics(sideKey, {formation?, mentality?})
+  makeSub(sideKey, offId, onId)      // → {ok} | {ok:false, error}
+  simulateToEnd()
+  finish()                           // → MatchResult (see data model)
+}
+simulateMatch(home, away, options)   // convenience: one-shot → MatchResult</code></pre>
+
+      <h3>2.2 Setup Normalisation</h3>
+      <p>The engine accepts three input shapes, normalised by <code>normalizeSetup()</code>:</p>
+      <ol>
+        <li><strong>Full squad</strong> (&gt;11 players): <code>selectXI</code> auto-picks the XI + bench.</li>
+        <li><strong>Explicit XI</strong> (<code>{name, players:[11]}</code>): used as-is, slot = natural pos.</li>
+        <li><strong>Prepared lineup</strong> (<code>{starters:[{player,slot}], bench, formation, mentality}</code>): the richest form, used by the live UI.</li>
+      </ol>
+      <p><code>validateSetup()</code> then enforces exactly one GK slot, valid positions, and
+      attribute ranges — throwing descriptive errors before any minute is played.</p>
+
+      <h3>2.3 The Per-Minute Loop</h3>
+      <div class="diagram">
+<pre>
+playMinute():
+  minute++
+  if minute == 46: log half-time
+  for each side: #aiTacticsPolicy ; #autoSubPolicy
+  resolve possession (midfield battle × home boost)
+  quiet build-up: passes (3–8) + maybe a tackle  → feeds live ratings
+  fouls &amp; cards (per side, 11% chance):
+      straight red 0.6% · yellow 11% · second-yellow → red
+  injuries (0.18% per side/min, weighted by injuryProne &amp; low condition):
+      AI auto-subs immediately; user side left short until manager reacts
+  chance resolution (BASE_CHANCE_PROB × mentality mods × atk/def ratio):
+      shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3)
+      miss (42%−atk×0.15%) · block (22%) · on-target → goal vs save
+      assist awarded 60% (ASSIST_WEIGHT MF=2, FW=1.5, DF=0.5)
+  condition decay (GK 0.08/min, others 0.30/min)
+  push timeline snapshot
+  if minute ≥ finalMinute: #endStage (ET? shootout? complete)
+</pre>
+      </div>
+
+      <h3>2.4 Strength Model</h3>
+      <p>Unit strength is averaged over the players occupying each slot, using effective
+      contribution:</p>
+      <pre><code>#eff(side, entry, attr) = player[attr]
+                       × slotPenalty(player, slot)   // 1.0 natural, 0.75 OOP, 0.5 GK mismatch
+                       × sharpness                   // morale + form + consistency noise
+                       × (0.7 + 0.3 × condition/100)</code></pre>
+      <p>Headcount matters with diminishing returns: <code>(slotCount / baseline)^exponent</code>,
+      where midfield uses exponent 0.25 (gentle possession shift) and defence/attack use 0.5.
+      This is why 5-3-2 defends and 4-3-3 attacks without midfield swamping possession.</p>
+
+      <h3>2.5 Rating System</h3>
+      <table class="grid">
+        <thead><tr><th>Event</th><th>ΔRating</th></tr></thead>
+        <tbody>
+          <tr><td>Pass completed</td><td>+0.008</td></tr>
+          <tr><td>Tackle won</td><td>+0.060</td></tr>
+          <tr><td>Shot on target</td><td>+0.150</td></tr>
+          <tr><td>Shot off target</td><td>−0.040</td></tr>
+          <tr><td>Goal</td><td>+1.100</td></tr>
+          <tr><td>Assist</td><td>+0.600</td></tr>
+          <tr><td>Save</td><td>+0.180</td></tr>
+          <tr><td>Concede (GK)</td><td>−0.300</td></tr>
+          <tr><td>Concede (DF)</td><td>−0.100</td></tr>
+          <tr><td>Foul</td><td>−0.050</td></tr>
+          <tr><td>Yellow</td><td>−0.250</td></tr>
+          <tr><td>Red</td><td>−1.300</td></tr>
+          <tr><td>Clean sheet (GK/DF)</td><td>+0.500</td></tr>
+          <tr><td>Penalty scored / missed</td><td>+0.35 / −0.45</td></tr>
+        </tbody>
+      </table>
+      <p>Base 6.0, clamped to [1, 10].</p>
+
+      <h3>2.6 AI Behaviour</h3>
+      <ul>
+        <li><strong>Tactics policy</strong> (after minute 55, 6% chance/min): trailing → attacking
+        (and 4-3-3 after 75); leading after 70 → defensive (5-3-2 after 82); level &amp; short-handed → defensive.</li>
+        <li><strong>Auto-sub policy</strong> (60–85 min, 5% chance): replaces the most tired
+        outfielder (&lt;80 condition) with the best bench fit for the slot.</li>
+        <li><strong>Forced sub on injury</strong>: AI sides substitute immediately; user sides
+        are left a man short to force a managerial reaction (the auto-pause).</li>
+        <li><strong>Emergency keeper</strong>: if a keeper is lost with no GK on the bench, the
+        best-defending outfielder pulls on the gloves.</li>
+      </ul>
+
+      <h3>2.7 Knockout Resolution</h3>
+      <p>When <code>knockout: true</code> and level at 90+stoppage, 30 minutes of extra time
+      (plus 1–2 min stoppage) are appended. If still level, a best-of-5 penalty shootout runs,
+      finishing early once decided; sudden death follows if needed. Penalty conversion:
+      <code>clamp(0.76 + (taker.atk − oppKeeper.def) × 0.0015, 0.55, 0.92)</code>.</p>
+
+      <h2>3. League &amp; Cup Subsystem</h2>
+
+      <h3>3.1 Fixtures (<code>league.js</code>)</h3>
+      <p>The circle method generates a double round-robin. For n clubs it produces
+      <code>2(n−1)</code> rounds of <code>n/2</code> matches, with the fixed team's venue
+      alternating to balance home/away. A null "bye" marker handles odd counts.</p>
+
+      <h3>3.2 Table (<code>computeTable</code>)</h3>
+      <p>Accumulates played/won/drawn/lost/goalsFor/goalsAgainst/goalDiff/points, then sorts on
+      <code>points → goalDiff → goalsFor → name</code>. Three points for a win, one for a draw.</p>
+
+      <h3>3.3 Cup (<code>cup.js</code>)</h3>
+      <p>Single-leg knockout spanning all 24 clubs. The opening round reduces the field to the
+      largest power of two below the entrant count (24 → 16) via byes drawn with Fisher-Yates
+      using the shared RNG. Ties then halve each round to the final. Round names map by survivor
+      count (Final, Semi, Quarter, Round of 16, First Round). <code>advanceCup()</code> records
+      winners and redraws; <code>inCup()</code> tests liveness.</p>
+      <div class="callout blue">
+        <span class="label">Power-of-two reduction</span>
+        <p><code>openingTarget(n) = 2^floor(log2(n−1))</code>. So 12→8, 16→8, 24→16. This keeps
+        every subsequent round a clean halving, avoiding awkward byes deep in the bracket.</p>
+      </div>
+
+      <h3>3.4 Calendar (<code>season.js</code>)</h3>
+      <p><code>buildCalendar(leagueRounds, cupRounds)</code> emits one league entry per round,
+      inserting a cup day after the round closest to <code>rounds × (i+1)/(cupRounds+1)</code>
+      for each cup round — spreading the cup evenly through the season. Months are 4 weeks;
+      <code>monthName(week)</code> drives Player of the Month.</p>
+
+      <h2>4. Transfer Subsystem</h2>
+      <p>Source: <code>src/engine/transfers.js</code> (pure functions); glued to state in
+      <code>game.js</code>.</p>
+
+      <h3>4.1 Valuation</h3>
+      <table class="grid">
+        <thead><tr><th>Function</th><th>Formula / rule</th></tr></thead>
+        <tbody>
+          <tr><td><code>askingPrice(club, player)</code></td><td><code>value × (listed?0.85:1.2) × (key player?1.25:1)</code>, rounded to £5k. Key player = within 3 of squad best ability.</td></tr>
+          <tr><td><code>evaluateBid(club, player, amount)</code></td><td>≥ asking → accepted; ≥ 90% value → countered at midpoint; else rejected.</td></tr>
+          <tr><td><code>wageDemand(player, fromTier, toTier)</code></td><td><code>max(wage×1.1, fairWage)</code>; ×1.35 to step down a tier.</td></tr>
+          <tr><td><code>freeAgentWage(player)</code></td><td><code>fairWage × 1.05</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 Player Willingness</h3>
+      <p><code>playerAgrees(rng, player, fromTier, toTier)</code>: always agrees if
+      <code>toTier ≥ fromTier − 4</code> (lateral or upward). Otherwise reluctant, more so at peak
+      age, capped at 85% rejection. This stops stars dropping to minnows without friction.</p>
+
+      <h3>4.3 Squad Protection</h3>
+      <p><code>canRelease(club, player)</code> refuses if the squad would drop to &lt;15 players, or
+      if selling a GK would leave fewer than 2. This prevents the AI or the user from gutting a
+      squad below viability.</p>
+
+      <h3>4.4 AI Market Behaviour</h3>
+      <ul>
+        <li><strong>Interest</strong>: <code>aiInterest(club, player)</code> = upgrade over the
+        club's best in that position (+ thin-squad bonus). Weighted pick selects the target.</li>
+        <li><strong>Offers</strong>: <code>aiOfferAmount</code> = <code>value × (0.9..1.4)</code>.</li>
+        <li><strong>Activity</strong>: ~22% weekly chance of an AI bid for a user player;
+        ~15% weekly chance of an AI-to-AI transfer. Listed players attract 2.5× interest.</li>
+      </ul>
+
+      <h3>4.5 Scouting &amp; Attribute Masking</h3>
+      <p><code>Game.attrDisplay(player, attr)</code> returns exact attributes for the user's own
+      players and scouted players; for everyone else it returns a stable range
+      <code>[lo, hi]</code> of half-width 8 that <em>contains the truth</em> but is offset by a
+      per-player deterministic hash so the centre never leaks the real value. Sorting uses
+      <code>visibleMid()</code> so the market orders by what the manager can see. A £15k scout
+      report (1 week) flips a player to "known exactly".</p>
+
+      <h2>5. Career Loop (<code>game.js</code>)</h2>
+
+      <h3>5.1 <code>advanceWeek(userResult)</code></h3>
+      <p>The master tick. Steps:</p>
+      <ol>
+        <li>Resolve the calendar event: league round (both divisions) or cup round.</li>
+        <li>For each pairing, <code>#resultFor</code> uses the user's live result if it's the
+        user's match, else <code>simulateMatch</code> with a fresh seed from <code>rng</code>.</li>
+        <li><code>#applyMatchResult</code>: morale/form/condition/injuries/bans, fanbase drift,
+        form guide, season stats, gate receipts &amp; attendance.</li>
+        <li><code>#weeklyUpkeep</code>: wages deducted, injuries ticked, condition recovered +18.</li>
+        <li><code>#tickExpansions</code> &amp; <code>#tickScouts</code>.</li>
+        <li><code>#aiTransferActivity</code> &amp; <code>#maybeAiOfferForUserPlayer</code>.</li>
+        <li><code>#updateBoard</code>: confidence from league drift + result; sack if &lt; 15.</li>
+        <li><code>week++</code>; monthly awards every 4 weeks; season end if calendar exhausted.</li>
+      </ol>
+
+      <h3>5.2 Fanbase Economy</h3>
+      <table class="grid">
+        <thead><tr><th>Driver</th><th>Multiplier</th></tr></thead>
+        <tbody>
+          <tr><td>Win</td><td>×1.008</td></tr>
+          <tr><td>Draw</td><td>×1.001</td></tr>
+          <tr><td>Loss</td><td>×0.996</td></tr>
+          <tr><td>Season finish (per position from 7th)</td><td>×(1 + (6.5 − pos) × 0.006)</td></tr>
+          <tr><td>Floor / ceiling</td><td>2,000 / 1.6 × capacity</td></tr>
+        </tbody>
+      </table>
+      <p>Attendance = <code>min(capacity, fanbase × (0.82..1.04) × cupBoost)</code>; gate =
+      attendance × £14. Cup ties get a 1.12 attendance boost.</p>
+
+      <h3>5.3 Stadium Expansion</h3>
+      <table class="grid">
+        <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Cost per seat</td><td>£220</td></tr>
+          <tr><td>Build time</td><td>8 weeks</td></tr>
+          <tr><td>Demand threshold (user)</td><td>fanbase ≥ 85% capacity</td></tr>
+          <tr><td>AI threshold</td><td>fanbase ≥ 110% capacity &amp; balance ≥ 1.5× cost</td></tr>
+          <tr><td>Step size</td><td>+15% of capacity, rounded to 500 seats, min 1,000</td></tr>
+        </tbody>
+      </table>
+
+      <h3>5.4 Board &amp; Job Market</h3>
+      <ul>
+        <li><strong>Confidence</strong>: drift = clamp(expectation − position, −2, +2); result
+        delta +3/0/−4. Clamped [0, 100]. &lt; 15 → sack.</li>
+        <li><strong>Sack</strong>: reputation −12; up to 2 job offers from clubs with
+        <code>tier ≤ reputation + 15</code>.</li>
+        <li><strong>Poach</strong>: after a strong season, 40% chance a club with
+        <code>tier &gt; club.tier + 5</code> and <code>≤ reputation + 15</code> comes calling.</li>
+        <li><strong>Reputation deltas</strong>: champion +12, cup win +8, promotion +8,
+        relegation −8, sack −12.</li>
+      </ul>
+
+      <h3>5.5 Season End</h3>
+      <p>A large deterministic transition. In order: final tables; prize money; fanbase pull;
+      promotion/relegation; season awards (golden boot, player of season); board verdict &amp;
+      reputation; sack-or-poach check; player development &amp; retirements; contract expiries
+      (user must renew deliberately; AI retains 70%); youth intake to ≥16; AI expansions;
+      expectation re-ranking by squad strength; calendar &amp; cup reset; <code>seasonIndex++</code>.</p>
+
+      <h2>6. Configuration Constants</h2>
+      <p>Centralised in <code>game.js</code> and <code>match.js</code> for tuning:</p>
+      <table class="grid">
+        <thead><tr><th>Constant</th><th>Value</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>HOME_ADVANTAGE</code></td><td>1.12</td><td>Home midfield/attack boost</td></tr>
+          <tr><td><code>BASE_CHANCE_PROB</code></td><td>0.28</td><td>Base shot probability per attacking minute</td></tr>
+          <tr><td><code>MAX_SUBS</code></td><td>3</td><td>Substitution limit</td></tr>
+          <tr><td><code>SACK_THRESHOLD</code></td><td>15</td><td>Board confidence sack floor</td></tr>
+          <tr><td><code>SCOUT_FEE</code></td><td>£15,000</td><td>Per scout report</td></tr>
+          <tr><td><code>MASK_HALF_WIDTH</code></td><td>8</td><td>Attribute estimate range</td></tr>
+          <tr><td><code>TICKET_PRICE</code></td><td>£14</td><td>Per attendee gate</td></tr>
+          <tr><td><code>EXPANSION_COST_PER_SEAT</code></td><td>£220</td><td>Stadium build cost</td></tr>
+          <tr><td><code>SAVE_VERSION</code></td><td>6</td><td>Persistence schema version</td></tr>
+          <tr><td><code>RETIREMENT_AGE</code></td><td>34</td><td>60% retire chance at/above</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="03-data-model.html">← 03 · Data Model</a> · <a href="05-ui-design.html">Next: 05 · UI Design →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 04 · Engine Specs</footer>
+</body>
+</html>

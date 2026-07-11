@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05 · UI Design — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 05 · UI Design</span>
+    <span class="spacer"></span>
+    <span class="meta">UI/UX · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html" class="active">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>05 · UI / UX Design</h1>
+      <p class="subtitle">Screen flows, design language, and real screenshots of the running application</p>
+
+      <h2>1. Design Language</h2>
+      <p>The interface deliberately mimics a <strong>retro management terminal</strong>: a deep
+      navy surface, dense monospace tables, a pitch-green accent, and a gold highlight for
+      prestige. The aesthetic is Championship Manager 99/00 — functional, information-dense,
+      and instantly readable — rather than a modern glossy football product.</p>
+      <table class="grid">
+        <thead><tr><th>Token</th><th>Value</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>--bg</code></td><td>#0a1226</td><td>Page surface</td></tr>
+          <tr><td><code>--surface</code></td><td>#101d3d</td><td>Panels &amp; tables</td></tr>
+          <tr><td><code>--surface-2</code></td><td>#16264e</td><td>Hovers &amp; buttons</td></tr>
+          <tr><td><code>--accent</code></td><td>#46e07c</td><td>Pitch green — primary actions, active states</td></tr>
+          <tr><td><code>--gold</code></td><td>#ffd75e</td><td>Prestige — scores, ratings, awards</td></tr>
+          <tr><td><code>--red</code></td><td>#ff5d5d</td><td>Danger — injuries, red cards, relegation</td></tr>
+          <tr><td><code>--font</code></td><td>Cascadia Mono / SF Mono</td><td>Monospace throughout</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Design principle</span>
+        <p>Every screen is a <em>table</em>. The CM genre lives in dense rows of numbers; the UI
+        leans into that rather than fighting it. Bars (condition/morale/confidence) are the only
+        graphical data viz outside the match pitch, and they're 8px tall — present but never loud.</p>
+      </div>
+
+      <h2>2. Information Architecture</h2>
+      <p>The application has three top-level modes, switched by hiding/showing sections:</p>
+      <div class="diagram">
+<pre>
+                    ┌─────────────────────┐
+                    │   Start Screen       │  new career / continue
+                    └──────────┬──────────┘
+                               │ start
+                               ▼
+              ┌────────────────────────────────┐
+              │       Management Hub            │  ◄──── sidebar nav (9 screens)
+              │  inbox · squad · tactics ·      │       Continue ▸ advances time
+              │  fixtures · table · cup ·       │
+              │  transfers · finances · club    │
+              └────────────┬───────────────────┘
+                           │ Continue (when user has a fixture)
+                           ▼
+              ┌────────────────────────────────┐
+              │        Match Day                │
+              │  pre-match → live → full time   │
+              └────────────┬───────────────────┘
+                           │ Continue ▸
+                           ▼
+                    (back to Hub → week summary)
+</pre>
+      </div>
+      <p>The hub's left sidebar is the persistent spine: a prominent <strong>Continue ▸</strong>
+      button at the top, nine navigation buttons, and a save control at the foot. The header
+      carries a live HUD (club, manager, season, week, balance).</p>
+
+      <h2>3. Screen-by-Screen Specification</h2>
+      <p>Each screen below pairs the design intent with a real screenshot captured from the
+      running application.</p>
+
+      <h3>3.1 Start / New Career</h3>
+      <p>Entry point. A manager-name field, a "Continue saved game" button (shown only when a
+      save exists), and a master club table paired with a live squad inspector. Hovering a club
+      row populates the right-hand squad panel; clicking starts a career. Each club row shows
+      division, unit ratings (GK/DEF/MID/ATT), an overall, and the board's expectation.</p>
+      <div class="shot">
+        <img src="screenshots/01-start-screen.png" alt="Start screen with club table and squad inspector">
+        <div class="caption"><span class="fig">Fig 3.1</span> · New career screen — club selection table with per-unit ratings and a hover-driven squad inspector panel.</div>
+      </div>
+
+      <h3>3.2 Inbox</h3>
+      <p>The default landing screen after starting or continuing. Time-stamped news items
+      (newest first) with subjects in gold and bodies in body text. Items that carry an
+      <code>offerId</code> render inline <strong>Accept / Reject</strong> actions — the inbox is
+      not just a log, it's an actionable queue. A badge on the nav button counts pending offers.</p>
+      <div class="shot">
+        <img src="screenshots/02-inbox.png" alt="Inbox with welcome message">
+        <div class="caption"><span class="fig">Fig 3.2</span> · Management hub — Inbox, showing the board's welcome message and expectation.</div>
+      </div>
+
+      <h3>3.3 Squad</h3>
+      <p>The squad roster sorted by position then ability. Columns: pos, name (with status tags
+      for INJ/BAN/LISTED), age, atk, def, condition bar, form, morale bar, wage, value, contract
+      years (red when ≤1), and per-player <strong>List</strong> / <strong>Renew</strong> actions.
+      A header summary shows squad size and the weekly wage bill.</p>
+      <div class="shot">
+        <img src="screenshots/03-squad.png" alt="Squad roster table">
+        <div class="caption"><span class="fig">Fig 3.3</span> · Squad management — full roster with condition/form/morale bars and contract actions.</div>
+      </div>
+
+      <h3>3.4 Tactics</h3>
+      <p>Formation and mentality selectors, an auto-pick button, and three tables: Starting XI
+      (with slot labels — OOP tagged when a player is out of position), Bench, and Reserves.
+      Interaction is click-to-swap: the first click selects a row (gold highlight), the second
+      click on a different row swaps the two players. Reserves are derived but swap-able too.</p>
+      <div class="shot">
+        <img src="screenshots/04-tactics.png" alt="Tactics screen with formation, XI, bench, reserves">
+        <div class="caption"><span class="fig">Fig 3.4</span> · Tactics — formation/mentality controls and click-to-swap XI/bench/reserves.</div>
+      </div>
+
+      <h3>3.5 Fixtures &amp; Results</h3>
+      <p>The full season calendar as a table: week number, competition label, and your match
+      (opponent + H/A, or the scoreline once played). The current week is highlighted. Cup weeks
+      show TBD opponents before the draw, or "eliminated" once you're out.</p>
+      <div class="shot">
+        <img src="screenshots/05-fixtures.png" alt="Fixtures and results calendar">
+        <div class="caption"><span class="fig">Fig 3.5</span> · Fixtures &amp; Results — the season calendar with the current week highlighted.</div>
+      </div>
+
+      <h3>3.6 League Tables</h3>
+      <p>Both divisions side by side, your division first. Standard P/W/D/L/GF/GA/GD/Pts columns.
+      Promotion and relegation zones are marked with coloured left borders (green up, red down);
+      your club row is highlighted. The header notes the movement rule for each division.</p>
+      <div class="shot">
+        <img src="screenshots/06-table.png" alt="League tables for both divisions">
+        <div class="caption"><span class="fig">Fig 3.6</span> · League Tables — both divisions with promotion/relegation zone shading.</div>
+      </div>
+
+      <h3>3.7 The Cup</h3>
+      <p>Knockout bracket view. The "Next" panel shows the upcoming round's ties and byes;
+      completed rounds list every tie with its scoreline, shootout result, and winner. When the
+      cup is won, a gold winner panel replaces the next-round view.</p>
+      <div class="shot">
+        <img src="screenshots/07-cup.png" alt="Cup bracket and round results">
+        <div class="caption"><span class="fig">Fig 3.7</span> · The Cup — knockout bracket with round-by-round results.</div>
+      </div>
+
+      <h3>3.8 Transfers</h3>
+      <p>The market screen. Position and max-value filters; a results table showing pos, name
+      (with status tags), club (or "Free agent"), age, atk/def (exact for own/scouted players,
+      <strong>ranges</strong> for everyone else), value, asking price, and per-row
+      <strong>Scout</strong> / <strong>Bid</strong> (or <strong>Sign</strong> for free agents)
+      actions. A header shows transfer budget, balance, and the scout fee. Counter-offers update
+      the asking price in place for a one-click accept.</p>
+      <div class="shot">
+        <img src="screenshots/08-transfers.png" alt="Transfer market with filters and scouted attributes">
+        <div class="caption"><span class="fig">Fig 3.8</span> · Transfer Market — searchable, with attribute masking until scouted.</div>
+      </div>
+
+      <h3>3.9 Finances</h3>
+      <p>Balance, transfer budget, weekly wage bill (flagged red if 30× the bill exceeds
+      balance), and a gate-receipts panel: fanbase, capacity, last &amp; average attendance,
+      last gate money. The stadium expansion panel quotes the next build (seats + cost) or shows
+      build progress, with the board's refusal reason when demand or funds are insufficient. A
+      top-earners table closes the screen.</p>
+      <div class="shot">
+        <img src="screenshots/09-finances.png" alt="Finances with balance, gates, and stadium expansion">
+        <div class="caption"><span class="fig">Fig 3.9</span> · Finances — balance, wage bill, fanbase-driven gate receipts, and stadium expansion.</div>
+      </div>
+
+      <h3>3.10 Club &amp; Board</h3>
+      <p>The strategic dashboard. Board confidence and manager reputation as bars; expectation vs
+      current position; a league top-scorers table; and a past-seasons history table
+      (champions, cup winner, your finish, top scorer). When a bigger club comes calling, a
+      poach-offer panel with Accept / Decline appears at the top.</p>
+      <div class="shot">
+        <img src="screenshots/10-club-board.png" alt="Club and board dashboard">
+        <div class="caption"><span class="fig">Fig 3.10</span> · Club &amp; Board — confidence, reputation, expectation, and season history.</div>
+      </div>
+
+      <h3>3.11 Pre-Match</h3>
+      <p>Shown when Continue finds a user fixture. A three-column layout: your line-up, your
+      bench (with the Kick off button), and an opposition report — the scout card with the
+      opponent's division position, form guide (colour-coded W/D/L), danger man, and predicted XI
+      (danger man highlighted). This is the payoff for the scouting system: tactical choices now
+      have information to react to.</p>
+      <div class="shot">
+        <img src="screenshots/11-prematch.png" alt="Pre-match screen with lineups and opposition report">
+        <div class="caption"><span class="fig">Fig 3.11</span> · Pre-match — your line-up, bench, and the scouted opposition report with danger man.</div>
+      </div>
+
+      <h3>3.12 Live Match Day</h3>
+      <p>The signature screen. A scoreboard (teams, score, clock with stoppage/ET, attendance),
+      a speed bar (Normal / Fast / Instant + Pause), a commentary feed (auto-scrolling, colour-coded
+      by event type), and a right-hand column with the <strong>formation pitch</strong> and a
+      tabbed <strong>player-stats table</strong>.</p>
+      <p>The pitch shows both teams as chips positioned by slot, each carrying a live rating
+      (colour-banded cold→hot), the surname, goal/card marks, and a team-colour tick. Goals
+      trigger a scoreboard flash and a chip pop animation. When the match auto-pauses at a key
+      moment, a gold sub-panel slides in with mid-match formation/mentality controls and the
+      substitution UI (on-pitch list + bench list, "X left" counter).</p>
+      <div class="shot">
+        <img src="screenshots/12-matchday.png" alt="Live match day with scoreboard, commentary, pitch, player stats">
+        <div class="caption"><span class="fig">Fig 3.12</span> · Live Match Day — scoreboard, commentary feed, formation pitch with live ratings, and player statistics.</div>
+      </div>
+      <div class="shot">
+        <img src="screenshots/13-matchday-away-stats.png" alt="Match day showing opposition player stats tab">
+        <div class="caption"><span class="fig">Fig 3.13</span> · Match Day — the away-side player statistics tab (passes/tackles/shots/goals/assists/saves/fouls/rating).</div>
+      </div>
+
+      <h3>3.13 Full Time</h3>
+      <p>Scorers with minutes, man of the match (gold), and a symmetrical stats comparison
+      (possession, shots, on target, corners, fouls, cards) with the leading side highlighted.
+      A primary <strong>Continue ▸</strong> button commits the result and advances the week.</p>
+      <div class="shot">
+        <img src="screenshots/14-fulltime.png" alt="Full time with scorers, man of the match, and stats">
+        <div class="caption"><span class="fig">Fig 3.14</span> · Full Time — scorers, man of the match, and comparative match statistics.</div>
+      </div>
+
+      <h2>4. Interaction Patterns</h2>
+      <table class="grid">
+        <thead><tr><th>Pattern</th><th>Where</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td>Click-to-swap</td><td>Tactics, Sub panel</td><td>First click selects (gold), second click swaps; same row deselects.</td></tr>
+          <tr><td>Inline actions</td><td>Inbox, Squad, Transfers</td><td>Mini-buttons render inside the row/item that owns the action.</td></tr>
+          <tr><td>Auto-pause on key moment</td><td>Match Day</td><td>Half time / ET / red card / own injury halts the timer and opens the sub panel.</td></tr>
+          <tr><td>Speed control</td><td>Match Day</td><td>Normal (250ms) / Fast (60ms) / Instant (0, runs to completion).</td></tr>
+          <tr><td>Auto-save</td><td>Every transition</td><td>Continue, transfers, tactics, and match end all persist to localStorage.</td></tr>
+          <tr><td>Badge counters</td><td>Sidebar</td><td>Inbox badge reflects pending transfer offers.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>5. Responsive Behaviour</h2>
+      <p>The layout adapts at three breakpoints:</p>
+      <ul>
+        <li><strong>&gt; 980px</strong>: full three-column pre-match; two-column match layout (commentary + pitch/stats).</li>
+        <li><strong>≤ 980px</strong>: pre-match collapses to two columns; opposition report spans full width.</li>
+        <li><strong>≤ 900px</strong>: match layout stacks to a single column.</li>
+        <li><strong>≤ 720px</strong>: start-screen select-layout stacks; scoreboard shrinks; commentary height reduces.</li>
+      </ul>
+
+      <h2>6. Accessibility</h2>
+      <ul>
+        <li>Team-selection rows are focusable (<code>tabindex="0"</code>) and activate on Enter/Space.</li>
+        <li>The commentary feed and squad panel use <code>aria-live="polite"</code>.</li>
+        <li>All interactive controls have visible <code>:focus-visible</code> outlines in the accent colour.</li>
+        <li>The pitch carries an <code>aria-label="Formation view"</code>; the player-stats table has a caption.</li>
+        <li>Status is conveyed by colour <em>and</em> text (status tags, rating bands) so colour is not the only signal.</li>
+      </ul>
+
+      <p style="margin-top:30px"><a href="04-engine-specs.html">← 04 · Engine Specs</a> · <a href="06-test-plan.html">Next: 06 · Test Plan →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 05 · UI Design</footer>
+</body>
+</html>

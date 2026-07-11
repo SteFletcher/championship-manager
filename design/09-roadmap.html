@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>09 · Roadmap — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 09 · Roadmap</span>
+    <span class="spacer"></span>
+    <span class="meta">Forward · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html" class="active">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>09 · Future Roadmap</h1>
+      <p class="subtitle">Phased enhancements from the ideation backlog, ranked by impact &amp; effort</p>
+
+      <div class="callout blue">
+        <span class="label">How this was built</span>
+        <p>The roadmap is grounded in the <code>docs/ideation/2026-07-11-next-improvement-ideation.md</code>
+        backlog, which scores candidate features against the current codebase. Items already
+        shipped are marked <strong>Done</strong>; the rest are sequenced into near, mid, and
+        long-term horizons by their impact-to-effort ratio and their dependence on existing
+        systems.</p>
+      </div>
+
+      <h2>1. Delivered (the current feature set)</h2>
+      <p>These are the capabilities the reverse-engineered design documents describe as
+      <em>existing</em>. They form the foundation everything else builds on.</p>
+      <div class="timeline">
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>Resumable match engine + live match day</h3>
+          <p>Minute-by-minute MatchSim with pause, substitutions, auto-pause at key moments,
+          extra time, penalty shootouts, live ratings, and a formation pitch view.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>Two divisions with promotion/relegation + 24-club cup</h3>
+          <p>22-round double round-robin, two-up/two-down, dynamic board expectations, and a
+          knockout cup spanning all clubs with byes and rounds.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>In-match tactical management</h3>
+          <p>Formation and mentality changes during any pause, with AI managers reading the
+          game: chasing when behind, shutting up shop when ahead, digging in when short-handed.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>Scouting &amp; attribute masking</h3>
+          <p>Other clubs' attributes show as estimate ranges until a £15k scout report reveals
+          the truth; pre-match opposition reports show form, predicted XI, and danger man.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>Fanbase-driven economy &amp; stadium expansion</h3>
+          <p>Attendance follows a results-driven fanbase, capped by the ground; board-approved
+          capacity expansions unlock higher gates; AI boards expand too.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">in production</span></div>
+          <h3>Manager reputation &amp; the job market</h3>
+          <p>Sacking opens a job market at lesser clubs; strong seasons attract poach offers
+          from bigger clubs; reputation tracks trophies, promotions, and failures.</p>
+        </div>
+      </div>
+
+      <h2>2. Near-Term Horizons</h2>
+      <p>High-impact, lower-effort features that close loops the current systems already opened.</p>
+      <div class="timeline">
+        <div class="phase future">
+          <div class="ph-head">HORIZON 1 · NEAR <span class="stat-pill">low–medium effort</span></div>
+          <h3>Assistant manager / auto-resolve week</h3>
+          <p>A "holiday" or "assistant takes charge" flow for weeks the player wants to skip —
+          simulating the user's match and applying a default lineup. Closes the gap for players
+          who want to fast-forward through dead rubbers.</p>
+          <ul>
+            <li><strong>Basis:</strong> the Continue flow already auto-sims when there's no user
+            fixture; extending it to "play but don't watch" is a small step.</li>
+            <li><strong>Effort:</strong> Low. Mostly a UI button + a flag to <code>advanceWeek</code>.</li>
+            <li><strong>Risk:</strong> must keep determinism intact.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 1 · NEAR <span class="stat-pill">low effort</span></div>
+          <h3>League statistics pages</h3>
+          <p>Dedicated screens for assists, discipline, and clean sheets across the league,
+          extending the top-scorers table already on the Club &amp; Board screen.</p>
+          <ul>
+            <li><strong>Basis:</strong> <code>seasonStats</code> already aggregates apps, goals,
+            assists, and ratings — the data exists, only the views are missing.</li>
+            <li><strong>Effort:</strong> Low. Pure UI.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 1 · NEAR <span class="stat-pill">medium effort</span></div>
+          <h3>Player interaction &amp; morale events</h3>
+          <p>Direct player interactions — praise, fine, warn — that move morale, plus morale-
+          driven news events (unhappy stars, transfer requests). Gives the squad screen more
+          to <em>do</em> beyond list/renew.</p>
+          <ul>
+            <li><strong>Basis:</strong> morale exists and moves with results but is otherwise
+            inert; the inbox + pending-offers pattern is the template.</li>
+            <li><strong>Effort:</strong> Medium. New state + UI + news wiring.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>3. Mid-Term Horizons</h2>
+      <p>Larger systems that deepen existing loops; higher effort, back-loaded payoff.</p>
+      <div class="timeline">
+        <div class="phase future">
+          <div class="ph-head">HORIZON 2 · MID <span class="stat-pill">high effort</span></div>
+          <h3>Loan system</h3>
+          <p>Send players out on loan for match fitness (condition/form recovery + development
+          acceleration for youngsters) and loan in cover for injuries. A natural extension of
+          the transfer market that uses a time-bounded temporary move rather than a permanent sale.</p>
+          <ul>
+            <li><strong>Basis:</strong> transfers, youth intake, and development already exist;
+            loans thread through the same <code>#completeTransfer</code>-style path with a return date.</li>
+            <li><strong>Effort:</strong> High. New entity (loan), season-end return logic, UI.</li>
+            <li><strong>Impact:</strong> gives youth players a purpose and adds a squad-
+            management lever beyond buy/sell.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 2 · MID <span class="stat-pill">medium effort</span></div>
+          <h3>Staff &amp; facilities</h3>
+          <p>Hire assistant coaches, scouts, and physios; build training facilities and youth
+          academies as additional money sinks that improve development rates, scouting range,
+          and injury recovery. Generalises the stadium-expansion pattern.</p>
+          <ul>
+            <li><strong>Basis:</strong> stadium expansion proved the board-approval +
+            multi-week-build + cost model; finances need more sinks at successful clubs.</li>
+            <li><strong>Effort:</strong> Medium-High. Reusable build/quote pattern; new staff entity.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 2 · MID <span class="stat-pill">medium effort</span></div>
+          <h3>Set-piece &amp; training tactics</h3>
+          <p>Per-player training focus (improve a specific attribute slowly over weeks) and
+          set-piece assignments (corner taker, penalty taker, free-kick specialist) that feed
+          the match engine's chance resolution.</p>
+          <ul>
+            <li><strong>Basis:</strong> the match engine already picks shooters and providers by
+            weight; set-piece roles are a weighted-pick override.</li>
+            <li><strong>Effort:</strong> Medium. Development already mutates attributes yearly;
+            training is a weekly micro-develop step.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>4. Long-Term Horizons</h2>
+      <p>Ambitious expansions that materially grow the world or the play model.</p>
+      <div class="timeline">
+        <div class="phase future">
+          <div class="ph-head">HORIZON 3 · LONG <span class="stat-pill">high effort</span></div>
+          <h3>European competition</h3>
+          <p>A continental cup for the top finishers — a third competition layered on the
+          calendar, with a group stage or straight knockout and midweek slots. Explicitly
+          deferred at build time.</p>
+          <ul>
+            <li><strong>Basis:</strong> the cup engine (<code>cup.js</code>) generalises to any
+            entrant count; the calendar (<code>season.js</code>) already interleaves cup days.</li>
+            <li><strong>Effort:</strong> High. New entrant selection, fixture congestion, UI.</li>
+            <li><strong>Dependency:</strong> benefits from a richer squad (loans/staff) first.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 3 · LONG <span class="stat-pill">high effort</span></div>
+          <h3>International management</h3>
+          <p>Managing a national team alongside or instead of a club, with qualifying campaigns
+          and tournaments. The ultimate career capstone.</p>
+          <ul>
+            <li><strong>Basis:</strong> reputation and the job market already model managerial
+            standing; an international job is a special case of <code>acceptJob</code>.</li>
+            <li><strong>Effort:</strong> High. New selection model, tournament format, calendar
+            coordination.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 3 · LONG <span class="stat-pill">high effort</span></div>
+          <h3>Hotseat / multiplayer career</h3>
+          <p>Two or more human managers in the same world, taking turns. Requires a turn-passing
+          protocol and careful handling of simultaneous fixtures.</p>
+          <ul>
+            <li><strong>Basis:</strong> the engine is already deterministic and turn-based; the
+            blocker is purely the Continue-flow ownership model.</li>
+            <li><strong>Effort:</strong> High. Restructures the core loop; touches every screen.</li>
+            <li><strong>Rejected earlier</strong> for scope; reconsidered here as the long-term
+            ceiling.</li>
+          </ul>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">HORIZON 3 · LONG <span class="stat-pill">medium effort</span></div>
+          <h3>Replay &amp; match sharing</h3>
+          <p>Export a match's seed + inputs as a shareable token that anyone can replay
+          deterministically — "watch this incredible comeback" as a URL. A direct payoff of the
+          determinism contract.</p>
+          <ul>
+            <li><strong>Basis:</strong> <code>MatchSim</code> already replays identically from a
+            seed; a share is just a serialised setup + seed.</li>
+            <li><strong>Effort:</strong> Medium. Serialization + a replay-only UI mode.</li>
+            <li><strong>Impact:</strong> community virality for a niche game.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>5. Prioritisation Matrix</h2>
+      <p>Impact (value to the player) vs effort (engineering cost). Items in the top-left are
+      the best next bets.</p>
+      <div class="diagram">
+<pre>
+  High │  · League stats pages        · Loan system
+Impact│  · Assistant/holiday          · Staff &amp; facilities
+      │                               · Set-piece tactics
+      │.................................· Replay &amp; sharing
+ Med  │
+      │                    · Player interaction
+      │
+ Low  │                                 · European comp
+      │                                 · Internationals
+      │                                 · Hotseat MP
+      └──────────────────────────────────────────────────
+        Low            Medium           High
+                         Effort
+</pre>
+      </div>
+      <p>The clearest near-term winners are the low-effort, data-already-exists items
+      (league stats, assistant/holiday) followed by player interaction, which adds depth to the
+      squad screen without a new subsystem. Loans are the highest-value mid-term bet because
+      they give the youth intake — already in the game — a real purpose.</p>
+
+      <h2>6. Rejected / Deferred Ideas</h2>
+      <p>From the ideation backlog, explicitly not pursued (with reasons):</p>
+      <table class="grid">
+        <thead><tr><th>Idea</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Momentum meter / live xG graph</td><td>Cosmetic; no mechanic attached; weak basis.</td></tr>
+          <tr><td>Skip pre-match screen when lineup unchanged</td><td>Trivial; not worth a slot.</td></tr>
+          <tr><td>Dynamic board expectations / club stature drift</td><td>Duplicates weaker halves of promotion/relegation and reputation.</td></tr>
+          <tr><td>Roguelike-style career "runs" with unlocks</td><td>Breaks the CM identity of the subject.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>7. Guiding Principles for the Roadmap</h2>
+      <div class="callout">
+        <span class="label">Three rules for what gets built next</span>
+        <ol>
+          <li><strong>Engine first.</strong> New mechanics land in <code>src/engine/</code> with
+          tests before any UI. The purity boundary is non-negotiable.</li>
+          <li><strong>Close open loops before opening new ones.</strong> A feature that deepens
+          an existing system (loans → transfers → youth) beats a parallel new system at the same
+          effort.</li>
+          <li><strong>Determinism is a feature.</strong> Anything that would break replay (e.g.
+          real-time clocks, non-seeded randomness) is rejected or reworked to flow through the
+          shared RNG.</li>
+        </ol>
+      </div>
+
+      <p style="margin-top:30px"><a href="08-risk-register.html">← 08 · Risks</a> · <a href="index.html">Back to index</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 09 · Roadmap</footer>
+</body>
+</html>

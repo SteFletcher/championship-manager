@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03 · Data Model — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 03 · Data Model</span>
+    <span class="spacer"></span>
+    <span class="meta">DDM · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html" class="active">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>03 · Data Model</h1>
+      <p class="subtitle">Domain entities, attributes, and relationships</p>
+
+      <h2>1. Entity Relationship Overview</h2>
+      <div class="diagram">
+<pre>
+                ┌────────────────────────┐
+                │       Game (career)    │
+                │  managerName, clubName │
+                │  seasonIndex, week     │
+                │  rngState, version     │
+                │  board, tactics        │
+                │  reputation, sacked    │
+                └──┬───────┬──────────┬──┘
+                   │1      │1         │1
+          ┌────────┘       │          └────────────┐
+          │ *              │ *                     │ *
+          ▼                ▼                       ▼
+    ┌──────────┐     ┌───────────┐          ┌────────────┐
+    │  Club    │1───*│  Player   │          │  InboxItem │
+    │  (24)    │     │  (18/club)│          │  (≤120)    │
+    └────┬─────┘     └─────┬─────┘          └────────────┘
+         │ *               │1
+         │                 │ *
+   ┌─────┴────┐      ┌─────┴──────────┐
+   │  Fixture │      │  SeasonStats   │
+   │  pairs   │      │  per player    │
+   └──────────┘      └────────────────┘
+         │
+   ┌─────┴──────────────────────────┐
+   │           Cup                  │
+   │  ties[], byes[], winner        │
+   └────────────────────────────────┘
+</pre>
+      </div>
+      <p>The model is deliberately <strong>flat</strong>: there are no relational joins or ORMs.
+      A <code>Game</code> instance owns arrays of <code>Club</code> objects, each owning an array
+      of <code>Player</code> objects. Everything serialises to JSON by walking these arrays.</p>
+
+      <h2>2. Game (Career State)</h2>
+      <p>The root aggregate. One per save. Owned by the <code>Game</code> class in
+      <code>game.js</code>.</p>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>version</code></td><td>number</td><td>Save-format version; currently <code>6</code>. Mismatch refuses load.</td></tr>
+          <tr><td><code>managerName</code></td><td>string</td><td>Free text, max 30 chars at entry.</td></tr>
+          <tr><td><code>clubName</code></td><td>string</td><td>The human club's name; key into <code>clubs</code>.</td></tr>
+          <tr><td><code>rngState</code></td><td>number (u32)</td><td>Serialized RNG state — the determinism key.</td></tr>
+          <tr><td><code>clubs</code></td><td>Club[]</td><td>All 24 clubs, including the human one.</td></tr>
+          <tr><td><code>freeAgents</code></td><td>Player[]</td><td>Released/retired-replaced players; capped at 40.</td></tr>
+          <tr><td><code>seasonIndex</code></td><td>number</td><td>0-based season counter.</td></tr>
+          <tr><td><code>week</code></td><td>number</td><td>0-based week within the current season's calendar.</td></tr>
+          <tr><td><code>calendar</code></td><td>CalendarEntry[]</td><td><code>{type:'league'|'cup', round|cupRound}</code></td></tr>
+          <tr><td><code>fixtures</code></td><td>{1:Pairing[][], 2:Pairing[][]}</td><td>Per-division round-robin, both halves.</td></tr>
+          <tr><td><code>results</code></td><td>Result[]</td><td>Accumulated league results this season.</td></tr>
+          <tr><td><code>cup</code></td><td>Cup</td><td>Live knockout state.</td></tr>
+          <tr><td><code>cupResults</code></td><td>CupResult[]</td><td>Historical cup ties this season.</td></tr>
+          <tr><td><code>seasonStats</code></td><td>Map&lt;id,SeasonStats&gt;</td><td>Aggregated per-player season totals.</td></tr>
+          <tr><td><code>monthly</code></td><td>Map&lt;id,{sum,n}&gt;</td><td>Rolling rating accumulator for PotM.</td></tr>
+          <tr><td><code>inbox</code></td><td>InboxItem[]</td><td>News, newest first, capped at 120.</td></tr>
+          <tr><td><code>pendingOffers</code></td><td>Offer[]</td><td>AI bids for the user's players awaiting a decision.</td></tr>
+          <tr><td><code>board</code></td><td>{confidence}</td><td>0–100; below 15 triggers sacking.</td></tr>
+          <tr><td><code>tactics</code></td><td>{formation,mentality}</td><td>The user's default approach.</td></tr>
+          <tr><td><code>history</code></td><td>SeasonHistory[]</td><td>One entry per completed season.</td></tr>
+          <tr><td><code>reputation</code></td><td>number</td><td>5–100 managerial standing.</td></tr>
+          <tr><td><code>sacked</code></td><td>boolean</td><td>True when the human is between jobs.</td></tr>
+          <tr><td><code>jobOffers</code></td><td>string[]</td><td>Post-sack reachable club names.</td></tr>
+          <tr><td><code>pendingJobOffer</code></td><td>{club,season}|null</td><td>A poach offer from a bigger club.</td></tr>
+          <tr><td><code>scouted</code></td><td>Map&lt;id,true&gt;</td><td>Players whose attributes are fully known.</td></tr>
+          <tr><td><code>pendingScouts</code></td><td>{playerId,weeksLeft}[]</td><td>Scout reports in flight.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Club</h2>
+      <p>Defined in <code>src/data/teams.js</code>; mutated through the career by <code>game.js</code>.</p>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td>string</td><td>Unique; used as the primary key everywhere.</td></tr>
+          <tr><td><code>shortName</code></td><td>string</td><td>3-letter code (e.g. <code>RIV</code>) for tight UI.</td></tr>
+          <tr><td><code>tier</code></td><td>number</td><td>38–88; drives squad quality and starting finances.</td></tr>
+          <tr><td><code>capacity</code></td><td>number</td><td>Stadium seats; gate cap.</td></tr>
+          <tr><td><code>expectation</code></td><td>number</td><td>1-based target finishing position in its division.</td></tr>
+          <tr><td><code>division</code></td><td>1 | 2</td><td>Changed by promotion/relegation at season end.</td></tr>
+          <tr><td><code>fanbase</code></td><td>number</td><td>Active supporters; drives attendance. Floor 2,000.</td></tr>
+          <tr><td><code>lastAttendance</code></td><td>number</td><td>Most recent home gate.</td></tr>
+          <tr><td><code>attendanceSum/N</code></td><td>number</td><td>Season averages; reset each season.</td></tr>
+          <tr><td><code>expansion</code></td><td>{seats,weeksLeft}|null</td><td>Active build, or null.</td></tr>
+          <tr><td><code>formGuide</code></td><td>('W'|'D'|'L')[]</td><td>Last 5 results, newest last.</td></tr>
+          <tr><td><code>balance</code></td><td>number</td><td>Cash on hand (pence-rounded to pounds).</td></tr>
+          <tr><td><code>transferBudget</code></td><td>number</td><td>Ring-fenced spendable transfer pot.</td></tr>
+          <tr><td><code>players</code></td><td>Player[]</td><td>18 at season start; refilled to ≥16.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Derived finance</span>
+        <p><code>clubFinances(tier)</code> sets starting <code>balance = (tier/10)^3.4 × 3500</code>
+        and <code>transferBudget = 55% of balance</code>, both rounded to the nearest £10k / £5k.
+        So a tier-88 giant starts with millions; a tier-38 minnow with tens of thousands.</p>
+      </div>
+
+      <h2>4. Player</h2>
+      <p>The richest entity. Created by <code>createPlayer()</code>; developed yearly by
+      <code>developPlayer()</code>.</p>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td><code>&lt;SHORT&gt;-&lt;index&gt;</code> or <code>&lt;SHORT&gt;-Y&lt;n&gt;</code> for youth.</td></tr>
+          <tr><td><code>name</code></td><td>string</td><td>Unique within a club; drawn from first/last name pools.</td></tr>
+          <tr><td><code>pos</code></td><td>'GK'|'DF'|'MF'|'FW'</td><td>Natural position.</td></tr>
+          <tr><td><code>atk</code>, <code>def</code></td><td>1–99</td><td>Headline attributes.</td></tr>
+          <tr><td><code>age</code></td><td>number</td><td>17–33 at creation; increments each season.</td></tr>
+          <tr><td><code>consistency</code></td><td>1–99</td><td><strong>Hidden.</strong> Widens per-match variance.</td></tr>
+          <tr><td><code>injuryProne</code></td><td>1–99</td><td><strong>Hidden.</strong> Weights injury victim selection.</td></tr>
+          <tr><td><code>wage</code></td><td>number</td><td>Weekly £; <code>fairWage = (ability/10)^3.1 × 1.4</code>.</td></tr>
+          <tr><td><code>value</code></td><td>number</td><td>£; <code>(ability/10)^4.3 × 850 × ageFactor</code>, floor £10k.</td></tr>
+          <tr><td><code>contractYears</code></td><td>number</td><td>Decrements yearly; 0 → free agent unless renewed.</td></tr>
+          <tr><td><code>condition</code></td><td>20–100</td><td>Decays in matches, recovers ~18/week.</td></tr>
+          <tr><td><code>form</code></td><td>number</td><td>Rolling 6.0 baseline; 0.4-weighted recent rating.</td></tr>
+          <tr><td><code>morale</code></td><td>20–99</td><td>±8 win, +1 draw, −6 loss.</td></tr>
+          <tr><td><code>injuryWeeks</code></td><td>number</td><td>Ticked down weekly in upkeep.</td></tr>
+          <tr><td><code>banMatches</code></td><td>number</td><td>Ticked down on sit-out matchdays.</td></tr>
+          <tr><td><code>yellowsAccum</code></td><td>number</td><td>≥5 → 1-match ban, reset.</td></tr>
+          <tr><td><code>listed</code></td><td>boolean</td><td>Transfer-listed; cheaper to buy, more AI interest.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout gold">
+        <span class="label">Ability &amp; valuation</span>
+        <p><code>ability(player)</code> is the headline number: pure <code>def</code> for GKs,
+        0.8/0.2 def/atk for DF, 0.8/0.2 atk/def for FW, and the mean for MF. It drives wages,
+        values, AI interest, and XI selection. <code>ageFactor</code> ramps 0.75 → 1.0 across the
+        peak window (24–28) then fades 0.13/year, so a 33-year-old star is worth far less than
+        a 26-year-old of identical ability.</p>
+      </div>
+
+      <h2>5. Match Entities</h2>
+      <h3>5.1 StatLine (per-match, per-player)</h3>
+      <p>Lives inside <code>MatchSim</code>, keyed by player id. Never written back to the
+      <code>Player</code> object during the match.</p>
+      <pre><code>{
+  id, name, pos, slot, started,
+  minutes, rating,            // 1–10, base 6.0
+  passes, tackles, shots, onTarget,
+  goals, assists, saves, fouls,
+  yellow, red, condition
+}</code></pre>
+
+      <h3>5.2 MatchResult</h3>
+      <p>Returned by <code>sim.finish()</code> and consumed by <code>Game.advanceWeek()</code>.</p>
+      <pre><code>{
+  seed, homeTeam, awayTeam,
+  score: {home, away},
+  winner: 'home'|'away'|'draw',
+  shootout: {home, away} | null,
+  playedMinutes,
+  events: [{minute, type, side, player, text}],
+  stats: {home: SideStats, away: SideStats},
+  scorers: {home: [{player,minute}], away: [...]},
+  playerStats: {home: StatLine[], away: StatLine[]},
+  injuries: [{side, id, player, minute, weeks}],
+  subsUsed: {home, away},
+  timeline: Snapshot[] | null
+}</code></pre>
+
+      <h2>6. Competition Entities</h2>
+      <h3>6.1 Pairing (fixture)</h3>
+      <pre><code>{ home: string, away: string }</code></pre>
+      <h3>6.2 Result (league)</h3>
+      <pre><code>{ home, away, homeGoals, awayGoals }</code></pre>
+      <h3>6.3 Cup</h3>
+      <pre><code>{
+  roundIndex, ties: Pairing[], byes: string[],
+  results: [],          // kept for save-shape stability
+  winner: string | null
+}</code></pre>
+      <h3>6.4 CupResult</h3>
+      <pre><code>{ round, home, away, homeGoals, awayGoals, shootout, winner }</code></pre>
+
+      <h2>7. Career-Support Entities</h2>
+      <h3>7.1 InboxItem</h3>
+      <pre><code>{ week, season, subject, body, ...extra }  // extra may carry offerId / jobOffer</code></pre>
+      <h3>7.2 Offer (AI bid for a user player)</h3>
+      <pre><code>{ id, playerId, player, from, amount, week }</code></pre>
+      <h3>7.3 SeasonStats (per player, per season)</h3>
+      <pre><code>{ apps, goals, assists, ratingSum, ratingN, motm }</code></pre>
+      <h3>7.4 SeasonHistory (one per completed season)</h3>
+      <pre><code>{
+  season, champion, champion2, promoted[], relegated[],
+  userPosition, userDivision, cupWinner,
+  topScorer: {name, club, goals} | null,
+  playerOfSeason: {name, club, avg} | null
+}</code></pre>
+
+      <h2>8. Cardinalities &amp; Invariants</h2>
+      <table class="grid">
+        <thead><tr><th>Relationship</th><th>Cardinality</th><th>Invariant</th></tr></thead>
+        <tbody>
+          <tr><td>Game → Club</td><td>1 : 24</td><td>Exactly 12 per division; fixed for the career.</td></tr>
+          <tr><td>Club → Player</td><td>1 : 18 (start), ≥16 (always)</td><td>Youth intake refills below 16.</td></tr>
+          <tr><td>Club → GK</td><td>≥2</td><td>Squad-protection rule (<code>MIN_GKS</code>).</td></tr>
+          <tr><td>Match → StatLine</td><td>1 : 16–22</td><td>11 starters + up to 5 bench, per side.</td></tr>
+          <tr><td>Calendar → entries</td><td>1 : 27 (12-club div)</td><td>22 league + 5 cup days.</td></tr>
+          <tr><td>Inbox → items</td><td>≤120</td><td>Truncated on insert.</td></tr>
+          <tr><td>Free agents</td><td>≤40</td><td>Truncated at season end.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>9. Validation Rules</h2>
+      <p><code>validateTeam()</code> enforces the structural contract for any XI handed to the match engine:</p>
+      <ul>
+        <li>Exactly 11 players.</li>
+        <li>Exactly one GK.</li>
+        <li>Every position is one of <code>GK/DF/MF/FW</code>.</li>
+        <li><code>atk</code> and <code>def</code> are finite and within [1, 99].</li>
+        <li>No duplicate player names within the team.</li>
+      </ul>
+      <p>These guards throw descriptive errors before any simulation begins, which the test
+      suite exercises explicitly.</p>
+
+      <p style="margin-top:30px"><a href="02-architecture.html">← 02 · Architecture</a> · <a href="04-engine-specs.html">Next: 04 · Engine Specs →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 03 · Data Model</footer>
+</body>
+</html>

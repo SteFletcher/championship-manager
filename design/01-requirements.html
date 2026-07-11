@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01 · Requirements — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 01 · Requirements</span>
+    <span class="spacer"></span>
+    <span class="meta">SRS · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html" class="active">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>01 · Requirements Specification</h1>
+      <p class="subtitle">Software Requirements Specification (SRS) — functional &amp; non-functional</p>
+
+      <h2>1. Purpose &amp; Scope</h2>
+      <p>Champman is a single-player football-management career game that runs entirely
+      in the browser. The player assumes the role of a manager at one of 24 fictional
+      clubs and is responsible for squad selection, tactics, transfers, finances,
+      stadium development, and meeting board expectations across full seasons of league
+      and cup football.</p>
+      <div class="callout">
+        <span class="label">In scope</span>
+        <ul>
+          <li>Career mode with a single human-managed club and 23 AI-managed clubs.</li>
+          <li>Two 12-club divisions with promotion/relegation and a 24-club knockout cup.</li>
+          <li>Resumable minute-by-minute match simulation with live tactical management.</li>
+          <li>Squad, tactics, transfers, finances, scouting, stadium, board, and news systems.</li>
+          <li>Deterministic save/load to localStorage.</li>
+        </ul>
+      </div>
+      <div class="callout red">
+        <span class="label">Out of scope (deferred)</span>
+        <ul>
+          <li>European competition, internationals, and hotseat multiplayer.</li>
+          <li>Backend services, accounts, cross-device sync.</li>
+          <li>Audio, 3D graphics, or licensed real-world club/player data.</li>
+        </ul>
+      </div>
+
+      <h2>2. Stakeholders &amp; Personas</h2>
+      <table class="grid">
+        <thead><tr><th>Persona</th><th>Motivation</th><th>Key flows</th></tr></thead>
+        <tbody>
+          <tr><td><strong>The Careerist</strong></td><td>Long seasons, building a club over time, job-hopping</td><td>Continue → match → transfers → season end → job market</td></tr>
+          <tr><td><strong>The Tactician</strong></td><td>Lives for match day; formation/mentality tinkering</td><td>Tactics → pre-match report → live match with pauses &amp; subs</td></tr>
+          <tr><td><strong>The Builder</strong></td><td>Scouting, transfers, stadium, finances</td><td>Transfers → scouting → finances → expansion → squad</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Functional Requirements</h2>
+      <p>Requirements are grouped by subsystem. Each carries an ID for traceability
+      into the architecture and test plan.</p>
+
+      <h3>3.1 Career &amp; World (CAR)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>CAR-01</code></td><td>The player shall choose a manager name and one of 24 clubs to begin a career.</td><td>New game places the chosen club under human control; all others AI.</td></tr>
+          <tr><td><code>CAR-02</code></td><td>The world shall contain two divisions of 12 clubs with deterministic squads.</td><td>24 clubs; same club always yields the same 18 players across new games.</td></tr>
+          <tr><td><code>CAR-03</code></td><td>The season shall be a calendar of league rounds interleaved with cup rounds.</td><td>22 league rounds + 5 cup days = 27 calendar weeks for a 12-club division.</td></tr>
+          <tr><td><code>CAR-04</code></td><td>Two clubs shall be promoted and two relegated each season.</td><td>Top 2 of Division 2 swap divisions with bottom 2 of Division 1.</td></tr>
+          <tr><td><code>CAR-05</code></td><td>Board confidence shall track performance and trigger sacking below a threshold.</td><td>Confidence &lt; 15 → manager sacked; job market opens.</td></tr>
+          <tr><td><code>CAR-06</code></td><td>A sacked manager shall be able to take a job at a lesser club.</td><td>Up to 2 reachable clubs offered; accepting continues the career mid-season.</td></tr>
+          <tr><td><code>CAR-07</code></td><td>Strong seasons shall attract offers from bigger clubs.</td><td>Poach offer raised when reputation exceeds current club tier + 5.</td></tr>
+          <tr><td><code>CAR-08</code></td><td>Manager reputation shall move with seasons, trophies, and sackings.</td><td>Champion +12, cup win +8, promotion +8, relegation −8, sack −12.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.2 Match Simulation (MAT)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>MAT-01</code></td><td>The match engine shall simulate minute-by-minute and be pausable at any time.</td><td><code>MatchSim.playMinute()</code> advances one minute; <code>pauseMatch()</code> halts the timer.</td></tr>
+          <tr><td><code>MAT-02</code></td><td>The same seed shall produce an identical match.</td><td>Deep-equal result objects across replays with the same seed.</td></tr>
+          <tr><td><code>MAT-03</code></td><td>The engine shall model possession, chances, shots, goals, fouls, cards, and injuries.</td><td>Score equals goal events; stats recorded per side and per player.</td></tr>
+          <tr><td><code>MAT-04</code></td><td>Up to 3 substitutions per side; sent-off players never reappear.</td><td><code>subsUsed ≤ 3</code>; sent-off set membership prevents return.</td></tr>
+          <tr><td><code>MAT-05</code></td><td>The match shall auto-pause at half time, extra time, red cards, and injuries to the user's players.</td><td>Key-moment banner shown; user left a man short until reacting to own injuries.</td></tr>
+          <tr><td><code>MAT-06</code></td><td>Formation and mentality shall be changeable mid-match by both user and AI.</td><td><code>setTactics()</code> remaps slots; AI chases when behind, shuts up shop when ahead.</td></tr>
+          <tr><td><code>MAT-07</code></td><td>Knockout ties level after 90 minutes shall go to extra time then penalties.</td><td>30 min ET; best-of-5 then sudden-death shootout.</td></tr>
+          <tr><td><code>MAT-08</code></td><td>Per-player live ratings out of 10 shall update from match events.</td><td>Goals +1.1, assists +0.6, saves +0.18, red −1.3, clean sheet +0.5, etc.</td></tr>
+          <tr><td><code>MAT-09</code></td><td>Home advantage shall apply to the home side.</td><td>1.12 multiplier on home midfield/attack effectiveness.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.3 Squad &amp; Players (SQD)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>SQD-01</code></td><td>Each club shall carry an 18-player squad with position, age, attributes, and hidden traits.</td><td>2 GK, 6 DF, 6 MF, 4 FW; <code>consistency</code> &amp; <code>injuryProne</code> hidden.</td></tr>
+          <tr><td><code>SQD-02</code></td><td>Players shall have condition, form, morale, wages, value, and contract years.</td><td>All fields present and updated weekly.</td></tr>
+          <tr><td><code>SQD-03</code></td><td>The engine shall auto-select the best available XI + 5-man bench for a formation.</td><td><code>selectXI()</code> deterministic; injured/suspended never picked.</td></tr>
+          <tr><td><code>SQD-04</code></td><td>Out-of-position players shall incur a penalty.</td><td>0.5× for GK mismatches, 0.75× otherwise.</td></tr>
+          <tr><td><code>SQD-05</code></td><td>Players shall develop at season end: youngsters grow, veterans fade, some retire.</td><td>≤21 grow +4; &gt;31 fade −4; age ≥34 retires at 60% chance.</td></tr>
+          <tr><td><code>SQD-06</code></td><td>Injuries shall carry real durations; 5 yellows or a red bring bans.</td><td><code>injuryWeeks</code> decremented weekly; <code>banMatches</code> ticks down on sit-outs.</td></tr>
+          <tr><td><code>SQD-07</code></td><td>A youth intake shall keep squads viable.</td><td>Squads refilled to ≥16 each season end.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.4 Tactics (TAC)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>TAC-01</code></td><td>Five formations and three mentalities shall be selectable.</td><td>4-4-2, 4-3-3, 4-5-1, 3-5-2, 5-3-2; defensive/normal/attacking.</td></tr>
+          <tr><td><code>TAC-02</code></td><td>The manager shall swap players between XI, bench, and reserves by clicking.</td><td>Two clicks complete a swap; lineup persists until invalid.</td></tr>
+          <tr><td><code>TAC-03</code></td><td>Mentality shall affect chance creation and concession rates.</td><td>Attacking ×1.12 create / ×1.08 concede; defensive ×0.85 / ×0.90.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.5 Transfers &amp; Scouting (TRF)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>TRF-01</code></td><td>The manager shall search the market with position and value filters.</td><td><code>searchPlayers()</code> returns ranked rows excluding own club.</td></tr>
+          <tr><td><code>TRF-02</code></td><td>Bids shall be evaluated as accepted / countered / rejected based on asking price.</td><td>≥ asking → accepted; ≥ 90% value → countered at midpoint; else rejected.</td></tr>
+          <tr><td><code>TRF-03</code></td><td>Players shall have willingness that depends on the tier step.</td><td><code>playerAgrees()</code> reluctant to drop divisions.</td></tr>
+          <tr><td><code>TRF-04</code></td><td>Squad-protection rules shall prevent selling below a floor.</td><td>≥ 15 players and ≥ 2 GKs always retained.</td></tr>
+          <tr><td><code>TRF-05</code></td><td>AI clubs shall bid for the user's players and conduct AI-to-AI transfers.</td><td>Pending offers arrive in inbox; ~15% weekly AI-to-AI chance.</td></tr>
+          <tr><td><code>TRF-06</code></td><td>Free agents shall be signable without a fee.</td><td><code>#signFreeAgent</code> path with wage demand only.</td></tr>
+          <tr><td><code>TRF-07</code></td><td>The manager shall transfer-list and renew contracts.</td><td>Listed players cheaper to buy (0.85×) and draw more AI interest.</td></tr>
+          <tr><td><code>TRF-08</code></td><td>Other clubs' attributes shall show as estimate ranges until scouted.</td><td>£15k scout report (1 week) reveals exact attributes; ranges stable &amp; truth-containing.</td></tr>
+          <tr><td><code>TRF-09</code></td><td>Pre-match opposition reports shall show form, predicted XI, and danger man.</td><td><code>oppositionReport()</code> returns XI + form guide + danger man.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.6 Finances &amp; Stadium (FIN)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>FIN-01</code></td><td>Each club shall have a balance, transfer budget, and weekly wage bill.</td><td>Wages deducted weekly; transfer budget ring-fenced from balance.</td></tr>
+          <tr><td><code>FIN-02</code></td><td>Home gate receipts shall follow attendance, capped by stadium capacity.</td><td><code>attendance × £14</code> added to home balance weekly.</td></tr>
+          <tr><td><code>FIN-03</code></td><td>A fanbase shall grow with wins and drain with defeats.</td><td>×1.008 win, ×1.001 draw, ×0.996 loss; floor 2,000.</td></tr>
+          <tr><td><code>FIN-04</code></td><td>The manager shall request stadium expansion when demand warrants.</td><td>Fanbase ≥ 85% capacity &amp; affordable → 8-week build, +15% seats.</td></tr>
+          <tr><td><code>FIN-05</code></td><td>AI boards shall expand their grounds when bursting.</td><td>AI expands at 110% fanbase/capacity with 1.5× cost in reserve.</td></tr>
+          <tr><td><code>FIN-06</code></td><td>Prize money shall be paid at season end by finishing position.</td><td>Champion of Div 1 receives £500k bonus + positional base.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.7 News &amp; Awards (NWS)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>NWS-01</code></td><td>An inbox shall receive time-stamped news items with optional actions.</td><td>Items capped at 120; offer items carry accept/reject buttons.</td></tr>
+          <tr><td><code>NWS-02</code></td><td>Monthly Player of the Month and end-of-season awards shall be issued.</td><td>PotM requires ≥ 2 appearances in the month; season awards include golden boot &amp; player of season.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.8 Persistence (SAV)</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
+        <tbody>
+          <tr><td><code>SAV-01</code></td><td>The game shall auto-save to localStorage after every week.</td><td>Save written on <code>advanceWeek</code> and after transfers/tactics.</td></tr>
+          <tr><td><code>SAV-02</code></td><td>A saved game shall restore and continue deterministically.</td><td>RNG state restored; resumed career replays identically.</td></tr>
+          <tr><td><code>SAV-03</code></td><td>The save format shall carry a version for compatibility gating.</td><td><code>SAVE_VERSION 6</code>; restore throws on mismatch.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Non-Functional Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>Category</th><th>Requirement</th><th>Target / measure</th></tr></thead>
+        <tbody>
+          <tr><td>Performance</td><td>Engine-only operations complete without perceptible delay.</td><td>A full season sim headless completes in &lt; 1 s.</td></tr>
+          <tr><td>Portability</td><td>No build step; runs from any static file server.</td><td><code>npm run serve</code> (python http.server) suffices.</td></tr>
+          <tr><td>Determinism</td><td>All randomness flows through one seeded RNG.</td><td>Identical seed → identical career (tested).</td></tr>
+          <tr><td>Testability</td><td>Engine is pure &amp; framework-free; UI is a thin client.</td><td>148 node:test tests, no DOM dependency in engine.</td></tr>
+          <tr><td>Accessibility</td><td>Keyboard navigability and ARIA labelling on key controls.</td><td>Team rows focusable + Enter/Space; <code>aria-live</code> on commentary.</td></tr>
+          <tr><td>Footprint</td><td>Zero runtime dependencies.</td><td><code>package.json</code> devDependencies only.</td></tr>
+          <tr><td>Realism</td><td>Statistical distributions over thousands of matches are believable.</td><td>~1.3–2.4 goals/match; home advantage present; mismatches dominate.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>5. Constraints &amp; Assumptions</h2>
+      <ul>
+        <li><strong>Single-player only.</strong> No network multiplayer or shared state.</li>
+        <li><strong>Fictional data.</strong> All clubs and players are invented; no licensing.</li>
+        <li><strong>Browser-local storage.</strong> Saves do not leave the device; clearing storage loses the career.</li>
+        <li><strong>ES module browser target.</strong> Requires a browser supporting native ES modules (all evergreen browsers).</li>
+        <li><strong>One human club.</strong> The other 23 clubs are always AI-managed; there is no hotseat mode.</li>
+      </ul>
+
+      <h2>6. Traceability Summary</h2>
+      <p>Each requirement ID maps to implementation modules (see <a href="02-architecture.html">02 · Architecture</a>)
+      and to test coverage (see <a href="06-test-plan.html">06 · Test Plan</a>). The matrix below is the
+      high-level mapping.</p>
+      <table class="grid">
+        <thead><tr><th>Requirement group</th><th>Primary module(s)</th><th>Primary test file(s)</th></tr></thead>
+        <tbody>
+          <tr><td>CAR</td><td><code>game.js</code></td><td><code>game.test.js</code></td></tr>
+          <tr><td>MAT</td><td><code>match.js</code></td><td><code>match.test.js</code>, <code>match-sim.test.js</code></td></tr>
+          <tr><td>SQD</td><td><code>players.js</code>, <code>team.js</code>, <code>teams.js</code></td><td><code>team.test.js</code>, <code>player-stats.test.js</code></td></tr>
+          <tr><td>TAC</td><td><code>team.js</code>, <code>match.js</code></td><td><code>match-sim.test.js</code></td></tr>
+          <tr><td>TRF</td><td><code>transfers.js</code>, <code>game.js</code></td><td><code>game.test.js</code></td></tr>
+          <tr><td>FIN</td><td><code>game.js</code>, <code>teams.js</code></td><td><code>game.test.js</code></td></tr>
+          <tr><td>NWS</td><td><code>game.js</code>, <code>season.js</code></td><td><code>game.test.js</code></td></tr>
+          <tr><td>SAV</td><td><code>game.js</code>, <code>rng.js</code></td><td><code>game.test.js</code>, <code>rng.test.js</code></td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="index.html">← Back to index</a> · <a href="02-architecture.html">Next: 02 · Architecture →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 01 · Requirements</footer>
+</body>
+</html>

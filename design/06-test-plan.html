@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>06 · Test Plan — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 06 · Test Plan</span>
+    <span class="spacer"></span>
+    <span class="meta">STP · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html" class="active">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>06 · Test &amp; Quality Assurance Plan</h1>
+      <p class="subtitle">Strategy, coverage matrix, and the realism harness</p>
+
+      <h2>1. Test Strategy</h2>
+      <p>Testing follows the architecture's purity boundary: because the engine has no DOM
+      dependency, the bulk of correctness is proven with fast, deterministic
+      <code>node --test</code> unit and property tests. A single puppeteer-driven browser smoke
+      test then proves the UI wires the engine correctly end-to-end.</p>
+      <div class="stats">
+        <div class="stat"><span class="num">148</span><span class="lbl">Engine/game tests</span></div>
+        <div class="stat"><span class="num">8</span><span class="lbl">Test files</span></div>
+        <div class="stat"><span class="num">1</span><span class="lbl">Browser E2E smoke</span></div>
+        <div class="stat"><span class="num">~2.5s</span><span class="lbl">Full suite runtime</span></div>
+      </div>
+
+      <table class="grid">
+        <thead><tr><th>Layer</th><th>Tooling</th><th>What it proves</th></tr></thead>
+        <tbody>
+          <tr><td>Unit / structural</td><td><code>node --test</code></td><td>Input validation, determinism, structural invariants per match</td></tr>
+          <tr><td>Statistical / property</td><td><code>node --test</code> over thousands of sims</td><td>Realism: goal rates, shot funnels, home advantage, mismatch behaviour</td></tr>
+          <tr><td>Integration</td><td><code>node --test</code> (game.test.js)</td><td>Week loop, season end, transfers, save/restore roundtrips</td></tr>
+          <tr><td>End-to-end</td><td>puppeteer-core + real Chromium</td><td>The UI drives a full career flow in a real browser</td></tr>
+        </tbody>
+      </table>
+
+      <h2>2. Test Suite Inventory</h2>
+      <table class="grid">
+        <thead><tr><th>File</th><th>Focus</th><th>Representative tests</th></tr></thead>
+        <tbody>
+          <tr><td><code>rng.test.js</code></td><td>RNG uniformity &amp; determinism</td><td>Distribution over 100k draws; same seed → same sequence; <code>hashString</code> stability</td></tr>
+          <tr><td><code>team.test.js</code></td><td>Team validation &amp; ratings</td><td>Validates well-formed teams; rejects malformed; exactly one GK; attribute range checks; uniform-team ratings</td></tr>
+          <tr><td><code>match.test.js</code></td><td>Match determinism &amp; invariants</td><td>Identical seeds replay identically; 50 seeds produce distinct matches; score ≡ goal events across 500 matches</td></tr>
+          <tr><td><code>match-sim.test.js</code></td><td>Resumable sim &amp; edge cases</td><td>Minute-by-minute equals one-shot; auto XI selection; substitution rules; sent-off never reappears; ET &amp; shootouts</td></tr>
+          <tr><td><code>league-cup.test.js</code></td><td>Competitions</td><td>Fixture count &amp; balance; table sort order; cup draw &amp; progression; bye handling</td></tr>
+          <tr><td><code>player-stats.test.js</code></td><td>Players &amp; valuation</td><td>Ability by position; age factor curve; wage/value scaling; development &amp; retirement</td></tr>
+          <tr><td><code>game.test.js</code></td><td>Career integration</td><td>New-game setup; week advancement; both divisions simulated; board confidence; transfers; save/restore roundtrip continues deterministically; multi-season invariants</td></tr>
+          <tr><td><code>browser-smoke.js</code></td><td>E2E browser flow</td><td>Loads the app, starts a career, plays a match, advances weeks, checks DOM invariants — in a real browser</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Requirement Coverage Matrix</h2>
+      <p>Mapping the requirement IDs from <a href="01-requirements.html">01 · Requirements</a> to
+      the tests that verify them.</p>
+      <table class="grid">
+        <thead><tr><th>Req ID</th><th>Test file(s)</th><th>Coverage</th></tr></thead>
+        <tbody>
+          <tr><td><code>CAR-01..08</code></td><td>game.test.js</td><td>New game, season structure, promotion/relegation, board, sacking, job market, reputation</td></tr>
+          <tr><td><code>MAT-01..09</code></td><td>match.test.js, match-sim.test.js</td><td>Pause/resume, determinism, invariants, subs, auto-pause, tactics, ET/pens, ratings, home advantage</td></tr>
+          <tr><td><code>SQD-01..07</code></td><td>team.test.js, player-stats.test.js</td><td>Squad shape, attributes, selectXI, slot penalty, development, injuries/bans, youth intake</td></tr>
+          <tr><td><code>TAC-01..03</code></td><td>match-sim.test.js</td><td>Formations, mentalities, swap interaction (UI smoke), mentality mods</td></tr>
+          <tr><td><code>TRF-01..09</code></td><td>game.test.js</td><td>Search, bid evaluation, willingness, squad protection, AI offers, free agents, listing, scouting, opposition reports</td></tr>
+          <tr><td><code>FIN-01..06</code></td><td>game.test.js</td><td>Balance, wages, gates, fanbase, expansion, prize money</td></tr>
+          <tr><td><code>NWS-01..02</code></td><td>game.test.js</td><td>Inbox, monthly &amp; seasonal awards</td></tr>
+          <tr><td><code>SAV-01..03</code></td><td>game.test.js, rng.test.js</td><td>Auto-save, restore determinism, version gating</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Statistical Realism Harness</h2>
+      <p>The match engine is a stochastic system, so a single match proves little. The suite
+      instead asserts <strong>distributional properties</strong> over thousands of simulations:</p>
+      <div class="callout blue">
+        <span class="label">What the harness checks</span>
+        <ul>
+          <li><strong>Score ≡ goal events.</strong> Across 500 matches, the final score always
+          equals the count of goal-typed events, side by side.</li>
+          <li><strong>Shot funnel.</strong> Shots ≥ shots on target ≥ goals, for every side in every match.</li>
+          <li><strong>Possession sums to 100.</strong> Home + away possession always totals 100.</li>
+          <li><strong>Sent-off players never reappear.</strong> Once removed, a dismissed player is absent from the pitch for all subsequent minutes.</li>
+          <li><strong>Goal rates.</strong> Over thousands of sims, average goals per match sits in a believable band (~1.3–2.4), with home teams scoring more than away teams.</li>
+          <li><strong>Mismatch dominance.</strong> A 90-rated side beats a 55-rated side the large majority of the time.</li>
+          <li><strong>Determinism.</strong> 50 different seeds produce ≥45 distinct matches (no degenerate repetition), while the same seed always produces identical output.</li>
+        </ul>
+      </div>
+
+      <h2>5. The Browser Smoke Test</h2>
+      <p><code>test/browser-smoke.js</code> is intentionally <em>not</em> part of
+      <code>npm test</code> — it requires a local Chromium-family browser and the dev server
+      running on <code>:8123</code>. It:</p>
+      <ol>
+        <li>Launches a headless Brave/Chromium via <code>puppeteer-core</code>.</li>
+        <li>Navigates to the app and starts a career at a known club.</li>
+        <li>Drives the Continue → pre-match → kick-off → full-time flow.</li>
+        <li>Advances several weeks and asserts DOM invariants (e.g. the HUD updates, the table
+        has the right number of rows).</li>
+        <li>Optionally dumps screenshots when <code>SHOT_DIR</code> is set — which is exactly how
+        the screenshots in <a href="05-ui-design.html">05 · UI Design</a> were produced.</li>
+      </ol>
+      <pre><code># Run the E2E smoke (server must be running)
+npm run serve            # in another terminal
+node test/browser-smoke.js [path-to-browser-binary]</code></pre>
+
+      <h2>6. Save/Restore Determinism Test</h2>
+      <p>A particularly important integration test, given the determinism contract:</p>
+      <ol>
+        <li>Play N weeks of a career from a seed, recording the result after each week.</li>
+        <li>Serialize the game, restore it, and continue playing.</li>
+        <li>Assert the resumed career produces <em>exactly</em> the same sequence of results as
+        an uninterrupted run from the same seed.</li>
+      </ol>
+      <p>This catches any state that fails to round-trip through JSON (e.g. Maps, undefined
+      fields, class brands) and any RNG consumption that isn't captured by
+      <code>rngState</code>.</p>
+
+      <h2>7. Quality Gates</h2>
+      <table class="grid">
+        <thead><tr><th>Gate</th><th>Criterion</th><th>Enforced by</th></tr></thead>
+        <tbody>
+          <tr><td>Green suite</td><td>148/148 tests pass</td><td><code>npm test</code> in CI / pre-merge</td></tr>
+          <tr><td>No build step</td><td>App loads from a static server with no transpilation</td><td><code>npm run serve</code> manual check</td></tr>
+          <tr><td>Save compatibility</td><td>Restore refuses mismatched <code>SAVE_VERSION</code></td><td>game.test.js</td></tr>
+          <tr><td>E2E smoke</td><td>Full career flow completes in a real browser</td><td>browser-smoke.js (manual)</td></tr>
+          <tr><td>Realism bands</td><td>Goal/card/possession distributions within bounds</td><td>Statistical harness</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Test Environments</h2>
+      <table class="grid">
+        <thead><tr><th>Environment</th><th>Runtime</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Engine unit/integration</td><td>Node 20+ (<code>node --test</code>)</td><td>No DOM; pure ES modules</td></tr>
+          <tr><td>Browser E2E</td><td>Chromium-family (Brave default)</td><td>Needs <code>puppeteer-core</code> dev dependency</td></tr>
+          <tr><td>Manual play</td><td>Any evergreen browser</td><td><code>npm run serve</code> → http://localhost:8123</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="05-ui-design.html">← 05 · UI Design</a> · <a href="07-project-plan.html">Next: 07 · Project Plan →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 06 · Test Plan</footer>
+</body>
+</html>

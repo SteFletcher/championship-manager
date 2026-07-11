@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>08 · Risk Register — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 08 · Risks</span>
+    <span class="spacer"></span>
+    <span class="meta">RR · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html" class="active">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>08 · Risk Register</h1>
+      <p class="subtitle">Identified risks, likelihood, impact, mitigations &amp; residual exposure</p>
+
+      <h2>1. Scoring Key</h2>
+      <table class="grid">
+        <thead><tr><th>Score</th><th>Likelihood</th><th>Impact</th></tr></thead>
+        <tbody>
+          <tr><td>1 — Low</td><td>Unlikely</td><td>Minor / cosmetic</td></tr>
+          <tr><td>2 — Medium</td><td>Possible</td><td>Noticeable degradation</td></tr>
+          <tr><td>3 — High</td><td>Probable / recurring</td><td>Blocks a core flow</td></tr>
+        </tbody>
+      </table>
+      <p>Risk rating = Likelihood × Impact (max 9). Risks are ordered by residual rating after
+      mitigation.</p>
+
+      <h2>2. Risk Register</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Risk</th><th>L</th><th>I</th><th>Rating</th><th>Mitigation</th><th>Residual</th></tr></thead>
+        <tbody>
+          <tr><td><code>R-01</code></td><td><strong>Match engine produces unrealistic distributions</strong> — goal/card rates outside believable bands, undermining the simulation's credibility.</td><td>2</td><td>3</td><td>6</td><td>Statistical realism harness over thousands of sims asserts goal-rate, shot-funnel, possession, and home-advantage bands; mismatches must dominate.</td><td>2 (L1×I2)</td></tr>
+          <tr><td><code>R-02</code></td><td><strong>Determinism breaks on save/restore</strong> — a resumed career diverges from an uninterrupted one, breaking replays and fairness.</td><td>2</td><td>3</td><td>6</td><td>Single seeded RNG with serializable state; explicit save/restore roundtrip test that continues identically; engine never mutates player objects mid-match.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-03</code></td><td><strong>Match-day pause/sub edge cases</strong> — sent-off players reappearing, emergency keeper logic failing, formation remap dropping players.</td><td>2</td><td>3</td><td>6</td><td>Structural invariants across 500 matches: sent-off never reappear; <code>#ensureKeeper</code> fallback; formation remap prefers natural positions with deficit landing up front.</td><td>2 (L1×I2)</td></tr>
+          <tr><td><code>R-04</code></td><td><strong>Save-format drift</strong> — schema changes break existing saves silently.</td><td>3</td><td>2</td><td>6</td><td><code>SAVE_VERSION</code> constant (currently 6); restore throws on mismatch rather than loading incompatible state.</td><td>2 (L1×I2)</td></tr>
+          <tr><td><code>R-05</code></td><td><strong>AI squad gutting</strong> — AI-to-AI transfers or AI bids hollow out squads below viability.</td><td>2</td><td>2</td><td>4</td><td><code>canRelease</code> enforces ≥15 players and ≥2 GKs always retained; transfer activity is probabilistic and bounded.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-06</code></td><td><strong>localStorage limits / corruption</strong> — a long career's JSON exceeds quota or a corrupt blob refuses to load.</td><td>2</td><td>2</td><td>4</td><td>Save is a single flat JSON, well within 5 MB quota; inbox capped at 120, free agents at 40; <code>loadGame</code> catches parse errors and returns null.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-07</code></td><td><strong>Scouting attribute masking leaks truth</strong> — the estimate range's centre or sort order reveals the real attribute.</td><td>2</td><td>2</td><td>4</td><td>Range is offset by a per-player deterministic hash so the centre never equals the truth; sorting uses <code>visibleMid</code>, not the hidden value; range always contains but is not centred on the truth.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-08</code></td><td><strong>Browser compatibility</strong> — native ES modules or a CSS feature fails in an older browser.</td><td>1</td><td>3</td><td>3</td><td>Target evergreen browsers only; no build step means failures surface immediately; E2E smoke runs in a real Chromium.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-09</code></td><td><strong>Season-end transition complexity</strong> — the large end-of-season sequence (development, retirements, promotion, expectations, cup reset) has a subtle ordering bug.</td><td>2</td><td>2</td><td>4</td><td>Multi-season headless simulation tests in game.test.js assert invariants across many seasons; the sequence is documented in the engine spec.</td><td>2 (L1×I2)</td></tr>
+          <tr><td><code>R-10</code></td><td><strong>Performance degeneration in long careers</strong> — many seasons of history or large free-agent pools slow the loop.</td><td>2</td><td>1</td><td>2</td><td>Inbox and free-agent arrays are capped; history is one entry per season (tiny); season stats reset yearly.</td><td>1 (L1×I1)</td></tr>
+          <tr><td><code>R-11</code></td><td><strong>Accessibility gaps</strong> — keyboard or screen-reader users blocked on dense tables.</td><td>2</td><td>2</td><td>4</td><td>Focusable team rows with Enter/Space; <code>aria-live</code> on commentary &amp; squad panel; status conveyed by text as well as colour; visible focus outlines.</td><td>2 (L1×I2)</td></tr>
+          <tr><td><code>R-12</code></td><td><strong>Scope creep</strong> — desire for real-world data, multiplayer, or European competition bloats the build.</td><td>2</td><td>2</td><td>4</td><td>Out-of-scope list explicit in the SRS; ideation backlog (see roadmap) ranks and defers rather than absorbing.</td><td>2 (L1×I2)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Risk Heatmap (pre-mitigation)</h2>
+      <div class="diagram">
+<pre>
+                 Impact →
+          1 (Low)      2 (Med)        3 (High)
+       ┌──────────┬──────────────┬─────────────┐
+  3 Hi │          │  R-04        │             │
+ L     │          │              │             │
+ i 2 M │  R-10    │ R-05 R-06    │ R-01 R-02   │
+ k ↓   │          │ R-07 R-09    │ R-03        │
+ e 1 Lo│          │  R-12        │  R-08       │
+ n     │          │  R-11        │             │
+       └──────────┴──────────────┴─────────────┘
+</pre>
+      </div>
+
+      <h2>4. Top Mitigations Summary</h2>
+      <div class="callout gold">
+        <span class="label">The single most effective mitigation</span>
+        <p>The <strong>engine/UI purity boundary</strong> (R-02, R-03, R-09) is the keystone:
+        because the engine is pure and DOM-free, the entire 148-test suite can run in Node in
+        ~2.5s and assert properties that would be impractical to verify through a browser. Most
+        risks reduce to "the test suite catches it" precisely because that boundary exists.</p>
+      </div>
+      <div class="callout">
+        <span class="label">Open / monitored</span>
+        <p>R-11 (a11y) and R-12 (scope) are the two risks with residual exposure that warrants
+        ongoing attention — a11y because dense table UIs are inherently hard for assistive
+        tech, and scope because the genre invites endless feature requests. Both are tracked in
+        the <a href="09-roadmap.html">roadmap</a> rather than "solved".</p>
+      </div>
+
+      <p style="margin-top:30px"><a href="07-project-plan.html">← 07 · Project Plan</a> · <a href="09-roadmap.html">Next: 09 · Roadmap →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 08 · Risk Register</footer>
+</body>
+</html>

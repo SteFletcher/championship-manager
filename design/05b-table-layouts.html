@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05b · Table Layouts — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 05b · Table Layouts</span>
+    <span class="spacer"></span>
+    <span class="meta">UI spec · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <a href="05b-table-layouts.html" class="active">05b · Table Layouts</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+    </nav>
+
+    <article class="doc">
+      <h1>05b · Table Layouts Specification</h1>
+      <p class="subtitle">Column-by-column layout spec for every table view in the application</p>
+
+      <div class="callout blue">
+        <span class="label">Purpose</span>
+        <p>The Champman UI is overwhelmingly <em>tables</em> — the CM genre lives in dense rows of
+        numbers. This document specifies, for each of the 14 table views, the exact columns, their
+        order, alignment, formatting, conditional styling, and interaction. It is the concrete
+        complement to <a href="05-ui-design.html">05 · UI Design</a>, which covers screen flows and
+        design language at a higher level. Every spec below is grounded in
+        <code>js/app.js</code> and <code>css/style.css</code>.</p>
+      </div>
+
+      <h2>1. Shared Table Vocabulary</h2>
+      <p>Four CSS classes anchor the table system. They share a dense, monospace aesthetic:
+        4–5px cell padding, a <code>--line</code> bottom border per row, dim uppercase headers,
+        and right alignment for numeric columns (the first column and any <code>.left</code>
+        column are left-aligned).</p>
+
+      <table class="grid">
+        <thead><tr><th>Class</th><th>Used for</th><th>Key CSS rules</th></tr></thead>
+        <tbody>
+          <tr><td><code>.team-table</code></td><td>Start-screen club selection</td><td>Hoverable rows; <code>picked-user</code>/<code>picked-cpu</code> row tints; first column appends " · YOU"/" · OPPONENT"</td></tr>
+          <tr><td><code>.squad-table</code></td><td>Start inspector, pre-match XI/bench/opp</td><td>Lightweight; columns 3+ right-aligned; <code>.pos</code> dim; <code>.empty</code> placeholder</td></tr>
+          <tr><td><code>.data-table</code></td><td>All hub screens (squad, tactics, fixtures, table, transfers, finances, club)</td><td>Right-aligned by default; <code>.highlight</code>, <code>.zone-up/down</code>, <code>.good/bad/gold/dim</code> cell colours; <code>.clickable</code> hover</td></tr>
+          <tr><td><code>.player-table</code></td><td>Live match player statistics</td><td><code>table-layout: fixed</code>; 11px font; column 2 = 31% width with ellipsis; rating colour bands; <code>.dismissed</code> line-through</td></tr>
+          <tr><td><code>.stats-table</code></td><td>Full-time comparative stats</td><td>3-column: home · label · away; leading side highlighted</td></tr>
+        </tbody>
+      </table>
+
+      <h3>1.1 Reusable Cell Components</h3>
+      <p>These helpers appear across many tables; they are defined once in <code>app.js</code> and
+      reused — so the spec references them rather than repeating their behaviour.</p>
+      <table class="grid">
+        <thead><tr><th>Component</th><th>Definition</th><th>Where used</th></tr></thead>
+        <tbody>
+          <tr><td><strong>money(n)</strong></td><td><code>≥£10M → £XM</code> (0dp); <code>≥£1M → £X.XM</code> (1dp); <code>≥£1k → £Xk</code>; else <code>£n</code>. Negative-prefixed.</td><td>Squad, Transfers, Finances, Club</td></tr>
+          <tr><td><strong>bar(value, low=40, mid=65)</strong></td><td>70×8px inline bar. Fill = <code>round(value)%</code>. <code>&lt;low</code> → red (<code>.low</code>); <code>&lt;mid</code> → gold (<code>.mid</code>); else accent green.</td><td>Squad (cond, morale), Tactics (cond), Club (confidence, reputation)</td></tr>
+          <tr><td><strong>statusTags(p)</strong></td><td>Inline chips after a name: <code>INJ n w</code> (red), <code>BAN n</code> (gold), <code>LISTED</code> (grey).</td><td>Squad, Transfers</td></tr>
+          <tr><td><strong>ratingBand(r)</strong></td><td><code>&lt;5.5</code> poor (red) · <code>&lt;6.5</code> ok (text) · <code>&lt;7.5</code> good (green) · else star (gold).</td><td>Match pitch chips, player table, full-time</td></tr>
+          <tr><td><strong>surname(name)</strong></td><td>Last token of the full name. Used where space is tight (pitch chips, player table).</td><td>Match day</td></tr>
+        </tbody>
+      </table>
+
+      <h2>2. Start Screen Tables</h2>
+
+      <h3>2.1 Club Selection Table <span class="mono" style="font-size:11px;color:var(--text-dim)">.team-table</span></h3>
+      <p>The master list of all 24 clubs. Hovering a row fires the squad inspector (§2.2);
+      clicking starts a career. Rows are focusable (<code>tabindex="0"</code>, Enter/Space activates).</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Align</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Club</td><td><code>team.name</code></td><td>left</td><td>Plain text; appends " · YOU" (green) or " · OPPONENT" (gold) on picked rows</td></tr>
+          <tr><td>2</td><td>Div</td><td><code>team.division</code></td><td>right</td><td><code>Div {n}</code>, dim</td></tr>
+          <tr><td>3</td><td>GK</td><td><code>teamRatings(...).goalkeeping</code></td><td>right</td><td>Integer, dim</td></tr>
+          <tr><td>4</td><td>DEF</td><td><code>teamRatings(...).defense</code></td><td>right</td><td>Integer, dim</td></tr>
+          <tr><td>5</td><td>MID</td><td><code>teamRatings(...).midfield</code></td><td>right</td><td>Integer, dim</td></tr>
+          <tr><td>6</td><td>ATT</td><td><code>teamRatings(...).attack</code></td><td>right</td><td>Integer, dim</td></tr>
+          <tr><td>7</td><td>Overall</td><td><code>overallRating(team)</code></td><td>right</td><td>Integer, <strong>gold + bold</strong></td></tr>
+          <tr><td>8</td><td>Board expects</td><td><code>team.expectation</code></td><td>right</td><td><code>Top {n}</code>, dim</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Row styling.</strong> <code>.picked-user</code> green tint + "·YOU"; <code>.picked-cpu</code> gold tint + "·OPPONENT"; <code>.dimmed</code> 45% opacity (disabled). Hover/focus → <code>--surface-2</code> background with accent outline.</p>
+
+      <h3>2.2 Squad Inspector <span class="mono" style="font-size:11px;color:var(--text-dim)">.squad-table</span></h3>
+      <p>Right-hand panel on the start screen, populated on hover/focus of a club row. Columns 3+
+      are right-aligned.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Pos</td><td><code>p.pos</code></td><td>Dim (<code>.pos</code>)</td></tr>
+          <tr><td>2</td><td>Name</td><td><code>p.name</code></td><td>Left</td></tr>
+          <tr><td>3</td><td>Age</td><td><code>p.age</code></td><td>Right</td></tr>
+          <tr><td>4</td><td>Att</td><td><code>p.atk</code></td><td>Right</td></tr>
+          <tr><td>5</td><td>Def</td><td><code>p.def</code></td><td>Right</td></tr>
+        </tbody>
+      </table>
+      <p>Empty state: a single <code>.empty</code> cell "Hover a club to inspect its squad".</p>
+
+      <h2>3. Hub Tables</h2>
+
+      <h3>3.1 Squad Roster <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>The full roster, sorted by position (GK→DF→MF→FW) then ability descending. A header line
+      shows squad size and the weekly wage bill.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format / styling</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Pos</td><td><code>p.pos</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Name <span style="color:var(--text-dim)">(left)</span></td><td><code>p.name</code> + <code>statusTags(p)</code></td><td>Name; trailing chips: <code>INJ n w</code> (red), <code>BAN n</code> (gold), <code>LISTED</code> (grey)</td></tr>
+          <tr><td>3</td><td>Age</td><td><code>p.age</code></td><td>Right</td></tr>
+          <tr><td>4</td><td>Att</td><td><code>p.atk</code></td><td>Right</td></tr>
+          <tr><td>5</td><td>Def</td><td><code>p.def</code></td><td>Right</td></tr>
+          <tr><td>6</td><td>Cond</td><td><code>bar(p.condition)</code></td><td>70×8px bar; <code>&lt;40</code> red, <code>&lt;65</code> gold, else green</td></tr>
+          <tr><td>7</td><td>Form</td><td><code>p.form.toFixed(1)</code></td><td>Right, 1 decimal</td></tr>
+          <tr><td>8</td><td>Morale</td><td><code>bar(p.morale)</code></td><td>70×8px bar; same low/mid thresholds</td></tr>
+          <tr><td>9</td><td>Wage</td><td><code>money(p.wage)</code> + <code>/w</code></td><td>Right; <code>£Xk/w</code></td></tr>
+          <tr><td>10</td><td>Value</td><td><code>money(p.value)</code></td><td>Right</td></tr>
+          <tr><td>11</td><td>Deal</td><td><code>p.contractYears</code> + <code>y</code></td><td>Right; <strong>red</strong> (<code>.bad</code>) when <code>≤1</code></td></tr>
+          <tr><td>12</td><td>(actions)</td><td>—</td><td><strong>List/Unlist</strong> + <strong>Renew</strong> mini-buttons</td></tr>
+        </tbody>
+      </table>
+      <div class="shot">
+        <img src="screenshots/03-squad.png" alt="Squad roster table">
+        <div class="caption"><span class="fig">Fig 3.1.1</span> · Squad roster — 12 columns including condition/morale bars and per-row List/Renew actions.</div>
+      </div>
+
+      <h3>3.2 Tactics — XI / Bench / Reserves <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>Three tables sharing one column structure. Rows are <code>.clickable</code>; click-to-swap
+      interaction (first click selects with gold <code>.swap-selected</code>, second click swaps).
+      The XI table adds an <strong>OOP</strong> tag (gold status-tag) when <code>slot ≠ player.pos</code>.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format / styling</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Slot / SUB / —</td><td>XI: <code>s.slot</code>; Bench: <code>SUB</code>; Reserves: <code>—</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Name <span style="color:var(--text-dim)">(left)</span></td><td><code>p.name</code> + <code>OUT</code> tag if unavailable + <code>OOP</code> tag (XI only, when out of position)</td><td>Left; unavailable → <code>OUT</code> red chip; OOP → gold chip</td></tr>
+          <tr><td>3</td><td>Pos</td><td><code>p.pos</code></td><td>Right</td></tr>
+          <tr><td>4</td><td>Att</td><td><code>p.atk</code></td><td>Right</td></tr>
+          <tr><td>5</td><td>Def</td><td><code>p.def</code></td><td>Right</td></tr>
+          <tr><td>6</td><td>Cond</td><td><code>bar(p.condition)</code></td><td>Bar (low/mid/green)</td></tr>
+          <tr><td>7</td><td>Form</td><td><code>p.form.toFixed(1)</code></td><td>Right, 1 decimal</td></tr>
+        </tbody>
+      </table>
+      <p>Empty bench/reserves show a single <code>.dim</code> "Empty" / "None" row.</p>
+      <div class="shot">
+        <img src="screenshots/04-tactics.png" alt="Tactics tables">
+        <div class="caption"><span class="fig">Fig 3.1.2</span> · Tactics — three tables (XI/Bench/Reserves) with click-to-swap and OOP tagging.</div>
+      </div>
+
+      <h3>3.3 Fixtures &amp; Results <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>The whole season as one table; the current week row is <code>.highlight</code>ed.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format / styling</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Week</td><td><code>W{week+1}</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Competition <span style="color:var(--text-dim)">(left)</span></td><td><code>League Round {n+1}</code> or <code>Cup {roundName}</code></td><td>Left</td></tr>
+          <tr><td>3</td><td>Your match <span style="color:var(--text-dim)">(left)</span></td><td>Pairing or result</td><td>Left; <code>opp (H|A)</code> upcoming, <code>home <b>h-a</b> away</code> played, <code>TBD</code> / <code>eliminated</code> (dim) for cup</td></tr>
+        </tbody>
+      </table>
+      <div class="shot">
+        <img src="screenshots/05-fixtures.png" alt="Fixtures table">
+        <div class="caption"><span class="fig">Fig 3.1.3</span> · Fixtures &amp; Results — current week highlighted, scores bolded once played.</div>
+      </div>
+
+      <h3>3.4 League Tables <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>Two division tables side by side (your division first). Promotion/relegation zones use
+      inset left-edge box-shadows; your club row is <code>.highlight</code>ed. Standard football
+      standings columns.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format / styling</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>#</td><td><code>i+1</code> (sort index)</td><td>Right</td></tr>
+          <tr><td>2</td><td>Club <span style="color:var(--text-dim)">(left)</span></td><td><code>r.team</code></td><td>Left; your row tinted green</td></tr>
+          <tr><td>3</td><td>P</td><td><code>r.played</code></td><td>Right</td></tr>
+          <tr><td>4</td><td>W</td><td><code>r.won</code></td><td>Right</td></tr>
+          <tr><td>5</td><td>D</td><td><code>r.drawn</code></td><td>Right</td></tr>
+          <tr><td>6</td><td>L</td><td><code>r.lost</code></td><td>Right</td></tr>
+          <tr><td>7</td><td>GF</td><td><code>r.goalsFor</code></td><td>Right</td></tr>
+          <tr><td>8</td><td>GA</td><td><code>r.goalsAgainst</code></td><td>Right</td></tr>
+          <tr><td>9</td><td>GD</td><td><code>r.goalDiff</code></td><td>Right; <code>+</code> prefix if &gt;0; <code>.good</code> green / <code>.bad</code> red</td></tr>
+          <tr><td>10</td><td>Pts</td><td><code>r.points</code></td><td>Right; <strong>gold</strong> (<code>.gold</code>)</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Zone rules</span>
+        <p><strong>Division 1:</strong> the bottom 2 rows get <code>.zone-down</code> (red 3px inset left edge).<br>
+        <strong>Division 2:</strong> the top 2 rows get <code>.zone-up</code> (green 3px inset left edge).<br>
+        Each panel header notes the movement rule: "bottom two relegated" / "top two promoted".</p>
+      </div>
+      <div class="shot">
+        <img src="screenshots/06-table.png" alt="League tables">
+        <div class="caption"><span class="fig">Fig 3.1.4</span> · League Tables — zone shading via inset box-shadow, GD colour-coded, Pts gold.</div>
+      </div>
+
+      <h3>3.5 Transfer Market <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>The richest hub table. Attribute cells are the key differentiator: exact (green) for own /
+      scouted players, a stable <code>lo–hi</code> range (dim) for everyone else. The header line
+      shows transfer budget (gold), balance, and the scout fee.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format / styling</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Pos</td><td><code>r.player.pos</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Name <span style="color:var(--text-dim)">(left)</span></td><td><code>r.player.name</code> + <code>statusTags</code></td><td>Left; INJ/BAN/LISTED chips</td></tr>
+          <tr><td>3</td><td>Club <span style="color:var(--text-dim)">(left)</span></td><td><code>r.club</code> or <code>Free agent</code></td><td>Left; free agent in <strong>green</strong> (<code>.good</code>)</td></tr>
+          <tr><td>4</td><td>Age</td><td><code>r.player.age</code></td><td>Right</td></tr>
+          <tr><td>5</td><td>Att</td><td><code>attrDisplay(p,'atk')</code></td><td><strong>Exact</strong> green (<code>.good</code>) if known; else <code>lo–hi</code> dim range</td></tr>
+          <tr><td>6</td><td>Def</td><td><code>attrDisplay(p,'def')</code></td><td>Same masking rule as Att</td></tr>
+          <tr><td>7</td><td>Value</td><td><code>money(r.player.value)</code></td><td>Right</td></tr>
+          <tr><td>8</td><td>Asking</td><td><code>money(r.asking)</code> or <code>—</code></td><td>Right; <strong>gold</strong> (<code>.gold</code>); "—" for free agents</td></tr>
+          <tr><td>9</td><td>(actions)</td><td>—</td><td><strong>Scout</strong> (or ✓ / "scouting…") + <strong>Bid</strong> (or <strong>Sign</strong> for free agents)</td></tr>
+        </tbody>
+      </table>
+      <p>Counter-offers update the row's <code>data-asking</code> in place so a follow-up Bid
+      accepts at the countered price. Empty filter result: a dim "No players match." row spanning all columns.</p>
+      <div class="shot">
+        <img src="screenshots/08-transfers.png" alt="Transfer market table">
+        <div class="caption"><span class="fig">Fig 3.1.5</span> · Transfer Market — masked attribute ranges, gold asking price, inline Scout/Bid actions.</div>
+      </div>
+
+      <h3>3.6 Finances <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>Three small two-column label/value tables (plus the stadium-expansion panel and a
+      top-earners table). All label columns are left-aligned.</p>
+      <h4>3.6.1 Summary</h4>
+      <table class="grid">
+        <thead><tr><th>Label</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>Balance</td><td><code>club.balance</code></td><td><code>money()</code>, <strong>gold</strong></td></tr>
+          <tr><td>Transfer budget</td><td><code>club.transferBudget</code></td><td><code>money()</code></td></tr>
+          <tr><td>Weekly wage bill</td><td><code>Σ p.wage</code></td><td><code>money()/week</code>; <strong>red</strong> if <code>wageBill × 30 &gt; balance</code></td></tr>
+        </tbody>
+      </table>
+      <h4>3.6.2 Gate receipts</h4>
+      <table class="grid">
+        <thead><tr><th>Label</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>Fanbase</td><td><code>club.fanbase</code></td><td><code>{n} supporters</code> (toLocaleString)</td></tr>
+          <tr><td>Stadium capacity</td><td><code>club.capacity</code></td><td>toLocaleString</td></tr>
+          <tr><td>Last home attendance</td><td><code>club.lastAttendance</code></td><td>toLocaleString or <code>—</code></td></tr>
+          <tr><td>Average attendance (season)</td><td><code>attendanceSum/N</code></td><td>rounded, toLocaleString or <code>—</code></td></tr>
+          <tr><td>Last gate receipts</td><td><code>lastAttendance × 14</code></td><td><code>money()</code>, <strong>gold</strong>; or <code>—</code></td></tr>
+        </tbody>
+      </table>
+      <h4>3.6.3 Top earners</h4>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Col</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Name <span style="color:var(--text-dim)">(left)</span></td><td><code>p.name</code></td><td>Left</td></tr>
+          <tr><td>2</td><td>Wage</td><td><code>p.wage</code></td><td><code>money()/w</code></td></tr>
+          <tr><td>3</td><td>Deal</td><td><code>p.contractYears</code></td><td><code>{n}y left</code></td></tr>
+        </tbody>
+      </table>
+      <p>Top 8 by wage. The expansion panel is not a table — it's a build quote or progress line
+      with a disabled button + reason when blocked.</p>
+      <div class="shot">
+        <img src="screenshots/09-finances.png" alt="Finances tables">
+        <div class="caption"><span class="fig">Fig 3.1.6</span> · Finances — summary, gate receipts, top earners, and the expansion panel.</div>
+      </div>
+
+      <h3>3.7 Club &amp; Board <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <h4>3.7.1 Board summary (label/value)</h4>
+      <table class="grid">
+        <thead><tr><th>Label</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>Board confidence</td><td><code>board.confidence</code></td><td><code>bar(conf, 30, 55)</code> + <code>{n}/100</code></td></tr>
+          <tr><td>Manager reputation</td><td><code>reputation</code></td><td><code>bar(rep, 30, 55)</code> + <code>{n}/100</code></td></tr>
+          <tr><td>Board expectation</td><td><code>club.expectation</code></td><td><code>Finish {ordinal} or better in Division {n}</code></td></tr>
+          <tr><td>Current position</td><td><code>leaguePosition()</code></td><td><code>{ordinal} in Division {n}</code>; <code>.good</code> green if ≤ expectation else <code>.bad</code> red</td></tr>
+        </tbody>
+      </table>
+      <h4>3.7.2 League top scorers</h4>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Col</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Name <span style="color:var(--text-dim)">(left)</span></td><td>player name</td><td>Left</td></tr>
+          <tr><td>2</td><td>Club <span style="color:var(--text-dim)">(left, dim)</span></td><td>club name</td><td>Left, dim</td></tr>
+          <tr><td>3</td><td>Goals</td><td><code>s.goals</code></td><td><code>{n} goals</code></td></tr>
+          <tr><td>4</td><td>Apps</td><td><code>s.apps</code></td><td><code>{n} apps</code></td></tr>
+          <tr><td>5</td><td>Avg</td><td><code>ratingSum/ratingN</code></td><td><code>{n.n} avg</code></td></tr>
+        </tbody>
+      </table>
+      <p>Top 10 by goals (only players with goals &gt; 0). Empty: "No goals yet."</p>
+      <h4>3.7.3 Past seasons (history)</h4>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Season</td><td><code>h.season+1</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Champions <span style="color:var(--text-dim)">(left)</span></td><td><code>h.champion</code></td><td>Left</td></tr>
+          <tr><td>3</td><td>Cup <span style="color:var(--text-dim)">(left)</span></td><td><code>h.cupWinner</code></td><td>Left; <code>—</code> if none</td></tr>
+          <tr><td>4</td><td>You</td><td><code>h.userPosition</code></td><td><code>{ordinal}</code> + <code>(D{n})</code></td></tr>
+          <tr><td>5</td><td>Top scorer <span style="color:var(--text-dim)">(left)</span></td><td><code>h.topScorer</code></td><td>Left; <code>{name} ({goals})</code> or <code>—</code></td></tr>
+        </tbody>
+      </table>
+      <p>Only shown once at least one season is complete. A poach-offer panel (Accept/Decline)
+      may appear above the summary when <code>pendingJobOffer</code> is set.</p>
+      <div class="shot">
+        <img src="screenshots/10-club-board.png" alt="Club and board tables">
+        <div class="caption"><span class="fig">Fig 3.1.7</span> · Club &amp; Board — confidence/reputation bars, top scorers, and past-seasons history.</div>
+      </div>
+
+      <h2>4. Match-Day Tables</h2>
+
+      <h3>4.1 Pre-Match — XI, Bench, Opposition XI <span class="mono" style="font-size:11px;color:var(--text-dim)">.squad-table</span></h3>
+      <p>Three lightweight tables in a 3-column page layout. The opposition XI highlights the
+      danger man with a gold-tinted <code>.highlight</code> row.</p>
+      <table class="grid">
+        <thead><tr><th>Table</th><th>Columns</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Your line-up</td><td>Slot · Name · Att · Def</td><td><code>slot</code> dim; attributes right-aligned</td></tr>
+          <tr><td>Bench</td><td>Pos · Name · Att · Def</td><td>Empty bench → "Empty bench" cell</td></tr>
+          <tr><td>Opposition XI</td><td>Slot · Name · Form</td><td>Danger-man row gold-tinted; <code>form.toFixed(1)</code></td></tr>
+        </tbody>
+      </table>
+      <p>The opposition report above the XI table is prose (position, form guide with colour-
+      coded W/D/L spans, danger man in gold) — not a table.</p>
+      <div class="shot">
+        <img src="screenshots/11-prematch.png" alt="Pre-match tables">
+        <div class="caption"><span class="fig">Fig 3.2.1</span> · Pre-match — your XI, bench, and the scouted opposition XI with danger-man highlight.</div>
+      </div>
+
+      <h3>4.2 Live Player Statistics <span class="mono" style="font-size:11px;color:var(--text-dim)">.player-table</span></h3>
+      <p>The only table using <code>table-layout: fixed</code> (so column widths are stable as
+      ratings tick). Tabbed home/away; only rows with <code>minutes &gt; 0 || started</code> show.
+      Substitutes append a dim "(s)".</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Header</th><th>Source</th><th>Width / format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Pos</td><td><code>l.slot</code></td><td>34px, left, dim</td></tr>
+          <tr><td>2</td><td>Name</td><td><code>surname(l.name)</code></td><td>31%, left, ellipsis; "(s)" if sub</td></tr>
+          <tr><td>3</td><td>Ps <span style="color:var(--text-dim)">(Passes)</span></td><td><code>l.passes</code></td><td>Right; <code>.zero</code> (dim line colour) if 0</td></tr>
+          <tr><td>4</td><td>Tk <span style="color:var(--text-dim)">(Tackles)</span></td><td><code>l.tackles</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>5</td><td>Sh <span style="color:var(--text-dim)">(Shots)</span></td><td><code>l.shots</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>6</td><td>Gl <span style="color:var(--text-dim)">(Goals)</span></td><td><code>l.goals</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>7</td><td>As <span style="color:var(--text-dim)">(Assists)</span></td><td><code>l.assists</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>8</td><td>Sv <span style="color:var(--text-dim)">(Saves)</span></td><td><code>l.saves</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>9</td><td>Fl <span style="color:var(--text-dim)">(Fouls)</span></td><td><code>l.fouls</code></td><td>Right; zero-dim</td></tr>
+          <tr><td>10</td><td>Rat <span style="color:var(--text-dim)">(Rating)</span></td><td><code>l.rating.toFixed(1)</code></td><td>Right, bold; colour band: poor red / ok text / good green / star gold</td></tr>
+        </tbody>
+      </table>
+      <p>Headers carry <code>title</code> tooltips for the abbreviations. Sent-off players get
+      <code>.dismissed</code> (45% opacity + line-through). The tab buttons show each side's
+      <code>shortName</code>.</p>
+      <div class="shot">
+        <img src="screenshots/13-matchday-away-stats.png" alt="Live player statistics table">
+        <div class="caption"><span class="fig">Fig 3.2.2</span> · Player statistics — fixed layout, 10 columns, rating colour bands, zero-dim cells.</div>
+      </div>
+
+      <h3>4.3 Full-Time Comparative Stats <span class="mono" style="font-size:11px;color:var(--text-dim)">.stats-table</span></h3>
+      <p>A symmetrical 3-column table: home value (right) · label (centre, dim uppercase) · away
+      value (left). For "bad" stats (fouls, yellow, red cards) the <em>lower</em> side leads; for
+      all others the <em>higher</em> side leads. The leading side's value is gold + bold
+      (<code>.leading</code>).</p>
+      <table class="grid">
+        <thead><tr><th>Label</th><th>Key</th><th>Leading rule</th></tr></thead>
+        <tbody>
+          <tr><td>Possession %</td><td><code>possession</code></td><td>higher leads</td></tr>
+          <tr><td>Shots</td><td><code>shots</code></td><td>higher leads</td></tr>
+          <tr><td>On target</td><td><code>onTarget</code></td><td>higher leads</td></tr>
+          <tr><td>Corners</td><td><code>corners</code></td><td>higher leads</td></tr>
+          <tr><td>Fouls</td><td><code>fouls</code></td><td><strong>lower</strong> leads</td></tr>
+          <tr><td>Yellow cards</td><td><code>yellowCards</code></td><td><strong>lower</strong> leads</td></tr>
+          <tr><td>Red cards</td><td><code>redCards</code></td><td><strong>lower</strong> leads</td></tr>
+        </tbody>
+      </table>
+      <p>Above the table: scorers (with minutes) per side and the man of the match (gold). Below:
+      the primary Continue ▸ button.</p>
+      <div class="shot">
+        <img src="screenshots/14-fulltime.png" alt="Full-time stats table">
+        <div class="caption"><span class="fig">Fig 3.2.3</span> · Full Time — symmetrical comparative stats with the leading side highlighted gold.</div>
+      </div>
+
+      <h3>4.4 Week Summary — Top Six <span class="mono" style="font-size:11px;color:var(--text-dim)">.data-table</span></h3>
+      <p>A compact standings snapshot shown after advancing a week.</p>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Col</th><th>Source</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>#</td><td><code>i+1</code></td><td>Right</td></tr>
+          <tr><td>2</td><td>Club <span style="color:var(--text-dim)">(left)</span></td><td><code>r.team</code></td><td>Left; your row green-tinted</td></tr>
+          <tr><td>3</td><td>P</td><td><code>r.played</code></td><td>Right</td></tr>
+          <tr><td>4</td><td>Pts</td><td><code>r.points</code></td><td>Right; <strong>gold</strong></td></tr>
+        </tbody>
+      </table>
+      <p>Your division's top 6 only. Above it, the week's results are grouped by competition and
+      division as prose lines (your matches gold-tinted).</p>
+
+      <h2>5. Interaction Summary Across Tables</h2>
+      <table class="grid">
+        <thead><tr><th>Table</th><th>Row interaction</th><th>Inline actions</th></tr></thead>
+        <tbody>
+          <tr><td>Club selection</td><td>Click = start career; hover/focus = inspect squad</td><td>—</td></tr>
+          <tr><td>Squad</td><td>—</td><td>List/Unlist, Renew (per row)</td></tr>
+          <tr><td>Tactics XI/Bench/Reserves</td><td>Click-to-swap (select then swap)</td><td>—</td></tr>
+          <tr><td>Fixtures</td><td>— (current week highlighted)</td><td>—</td></tr>
+          <tr><td>League table</td><td>— (your row + zones highlighted)</td><td>—</td></tr>
+          <tr><td>Transfers</td><td>— (clickable rows not used here)</td><td>Scout, Bid/Sign (per row)</td></tr>
+          <tr><td>Player stats (match)</td><td>Tab switch (home/away)</td><td>—</td></tr>
+          <tr><td>Inbox (non-table)</td><td>—</td><td>Accept/Reject on offer items</td></tr>
+        </tbody>
+      </table>
+
+      <h2>6. Formatting Reference</h2>
+      <table class="grid">
+        <thead><tr><th>Value</th><th>Formatter</th><th>Examples</th></tr></thead>
+        <tbody>
+          <tr><td>Money</td><td><code>money(n)</code></td><td><code>£18k</code>, <code>£1.2M</code>, <code>£12M</code>, <code>-£3k</code></td></tr>
+          <tr><td>Ordinal</td><td><code>ordinal(n)</code></td><td><code>1st</code>, <code>2nd</code>, <code>12th</code></td></tr>
+          <tr><td>Bar fill</td><td><code>bar(value,low,mid)</code></td><td>width = <code>round(value)%</code>; red &lt;40, gold &lt;65, green ≥65 (defaults)</td></tr>
+          <tr><td>Rating band</td><td><code>ratingBand(r)</code></td><td>poor &lt;5.5, ok &lt;6.5, good &lt;7.5, star ≥7.5</td></tr>
+          <tr><td>Attribute (masked)</td><td><code>attrDisplay(p,attr)</code></td><td>exact <code>74</code> (green) or range <code>66–74</code> (dim)</td></tr>
+          <tr><td>Status tag</td><td><code>statusTags(p)</code></td><td><code>INJ 3w</code>, <code>BAN 1</code>, <code>LISTED</code></td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="05-ui-design.html">← 05 · UI Design</a> · <a href="06-test-plan.html">Next: 06 · Test Plan →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 05b · Table Layouts</footer>
+</body>
+</html>

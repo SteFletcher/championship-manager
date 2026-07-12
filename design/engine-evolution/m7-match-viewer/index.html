@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-7 · The 2D Match Viewer — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-7</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="index.html" class="active">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../05-ui-design.html">05 · UI Design</a>
+      <a href="../../02-architecture.html">02 · Architecture</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-7 · The 2D Match Viewer</h1>
+      <p class="subtitle">Watch the whole game unfold: an SVG pitch replaying the action stream — full match or highlights — with zero engine changes</p>
+
+      <h2>1. Purpose</h2>
+      <p>The destination of the track. Twenty-two markers and a ball animate the EE-6
+      action log on a top-down pitch: passes travel, runs are made, tackles fly in, goals
+      erupt. The viewer is a <em>pure consumer</em> of engine output — it changes no
+      probability, draws nothing from the match RNG, and can replay any finished match
+      from its result object. Shipping it without touching <code>src/engine/</code> is the
+      proof that the extensibility programme (EE-1…EE-6) delivered.</p>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>SVG pitch component; marker layout from formation slot coordinates (EE-2)
+            + zone elasticity (flow log); ball animation over actions; play/pause/speed
+            (1×/2×/4×); highlights mode; integration into live match screen as a Pitch
+            tab; replay of finished matches from the week summary.</td>
+            <td>Sprite/kit graphics (markers are coloured discs + short names); off-ball
+            AI choreography beyond EE-6 <code>run</code> actions and zone elasticity;
+            camera zoom/follow modes; shareable replay URLs (Horizon 3 item); sound.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: highlights mode is the minimum shippable viewer (it
+      needs only key-action sequences); full-match continuous mode is the stretch half.
+      Build order runs highlights first for exactly this reason.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>VIEW-01</td><td>A Pitch tab on the live match screen renders an SVG pitch (correct markings, both teams' 11 markers with short names, referee-less) alongside the existing commentary/stats tabs, which remain.</td><td>Must</td></tr>
+          <tr><td>VIEW-02</td><td>Base marker positions come from formation slot coordinates (EE-2), mirrored for the away side; the whole shape breathes with the flow log — the team in possession shifts up-pitch, zone D/M/A stretching the block ±12 y-units.</td><td>Must</td></tr>
+          <tr><td>VIEW-03</td><td>Actions animate: pass/cross/through-ball tween the ball actor→target; dribble moves actor+ball; tackle/interception snaps possession with a flash on the defender; shot/save/goal play against the goalmouth; <code>run</code> actions move the runner. Substituted players swap markers; red cards remove them.</td><td>Must</td></tr>
+          <tr><td>VIEW-04</td><td>Action coordinates derive from slot base + zone anchor + deterministic jitter from a <strong>presentation RNG</strong> seeded by <code>matchSeed × minute × tick</code> — never the simulation RNG; replays look identical, and watching cannot change results.</td><td>Must</td></tr>
+          <tr><td>VIEW-05</td><td>Controls: play/pause, speed 1×/2×/4×, and mode toggle FULL / HIGHLIGHTS. Highlights = shot chains, goals, cards, injuries, penalties, plus 3 preceding actions each; a 90-minute match watches in ~90s at 1× highlights.</td><td>Must</td></tr>
+          <tr><td>VIEW-06</td><td>The viewer drives the same pause loop as today: auto-pause events (goals, injuries, subs available) pause the animation and open the existing panels; substitutions and instruction changes made while paused take effect when play resumes — identical semantics to the commentary view.</td><td>Must</td></tr>
+          <tr><td>VIEW-07</td><td>Any finished match in the week summary offers <strong>Watch replay</strong>, reconstructing the viewer from the stored result's action log (uses <code>simulateMatch</code> re-run from seed when the log isn't retained).</td><td>Must</td></tr>
+          <tr><td>VIEW-08</td><td>Performance: 60fps target on a mid-range laptop; ≤ 25 animated elements; requestAnimationFrame loop; the sim advances minute-by-minute exactly as today (viewer interpolates within the minute's actions).</td><td>Must</td></tr>
+          <tr><td>VIEW-09</td><td>Score/clock overlay, last-commentary ticker, and the EE-5 territory bar frame the pitch so the viewer replaces nothing — it adds the picture.</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Design</h2>
+      <h3>4.1 Architecture: a replay machine, not a renderer of the sim</h3>
+      <pre><code>js/viewer/
+  pitch.js       // SVG scaffold: markings, markers, ball, overlays
+  layout.js      // (slots, flow, actions) → per-frame target coordinates
+  timeline.js    // action log → keyframe schedule (full & highlight modes)
+  animator.js    // rAF loop: eases markers/ball toward targets; speed control
+// Input: { result, liveSim? }   — works from a finished result (replay)
+//                                 or a paused/advancing MatchSim (live)
+</code></pre>
+      <p>Live mode: the app already advances <code>MatchSim.playMinute()</code> on a
+      timer; the viewer consumes that minute's actions and animates them across the
+      minute's wall-time budget. Replay mode: same pipeline fed from the stored log. One
+      code path, two sources — the EE-1 promise (structured data end-to-end) cashed
+      in.</p>
+
+      <h3>4.2 Coordinate synthesis</h3>
+      <pre><code>coordOf(action) =
+  base   = slotXY(action.actorSlot, side)            // EE-2 geometry
+  anchor = zoneShift(action.zone)                    // D/M/A band centre
+  jitter = presRng(seed, minute, tick) × 6units      // deterministic sparkle
+→ eased toward by animator; ball travels actor→target coords
+</code></pre>
+      <p>This is deliberately theatre, not simulation — the engine knows zones, the viewer
+      invents plausible metres. The design accepts that honestly (FM's own early 2D was
+      the same trick), and VIEW-04 guarantees the theatre can never leak back into
+      results.</p>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <p><strong>None. No SAVE_VERSION bump, no engine diff.</strong> If session review
+      finds any engine change necessary, that is a design failure to record in the risk
+      log — the correct fix lands as an EE-6 follow-up, not a viewer hack.</p>
+
+      <h2>6. UI Design</h2>
+      <div class="diagram">
+<pre>
+MATCH DAY — Pitch tab (live or replay)
+┌────────────────────────────────────────────────────────────────────┐
+│  67'  KETTLEWORTH UTD 1 - 1 MILTON ROVERS      ⏸ · 1× 2× 4× · FULL│
+│  KET ◄▓▓▓▓▓▓▓▓▓▓▓░░░░░░► MIL                        [HIGHLIGHTS]  │
+│ ┌────────────────────────────────────────────────────────────────┐│
+│ │      ┌──┐                                            ┌──┐      ││
+│ │      │  │ ○Bexley                                    │  │      ││
+│ │      └──┘        ●Finch                       ○Okafor└──┘      ││
+│ │           ●Cole       ●Reid    ⚽●Okonkwo                       ││
+│ │           ●Mbeki   ●Salter        ↘ pass                       ││
+│ │           ●Ward       ●Diaz     ●Hurst→    ○Vance              ││
+│ │                                  (run)                         ││
+│ └────────────────────────────────────────────────────────────────┘│
+│  71' Okonkwo → Hurst, cut back...                     [SUBS][TAC] │
+└────────────────────────────────────────────────────────────────────┘
+  ● home (filled)   ○ away (open)   ⚽ ball   arrows drawn per action
+
+HIGHLIGHTS MODE — skips to key sequences with a context card
+┌────────────────────────────────────────────────────────────────────┐
+│   ▶ 34' GOAL — Hurst (assist Okonkwo)          [ ⏮ prev | next ⏭ ]│
+│   pitch plays the 4-action build-up, ball into net, celebration    │
+│   pulse on scorer marker, score overlay updates                    │
+└────────────────────────────────────────────────────────────────────┘
+
+WEEK SUMMARY — replay entry point (VIEW-07)
+│  Kettleworth Utd 2-1 Milton Rovers      [DETAILS] [▶ WATCH REPLAY] │
+</pre>
+      </div>
+      <p>Markers: 14px discs in club colours with 3-char name tags at 1×; tags fade at
+      4×. Goal celebration: scorer pulse + score flash — retro-restrained, no confetti.
+      The Pitch tab is default when the user chooses "watch"; commentary tab remains
+      default for "play match" continuity until the user switches (preference
+      remembered).</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>timeline compiler</td><td>unit</td><td>Action log → keyframes: monotonic times, every shot chain represented, highlight mode selects exactly the key sequences + 3-action lead-ins.</td></tr>
+          <tr><td>coordinate synthesis deterministic</td><td>unit</td><td>Same result object → identical frame targets twice; presentation RNG never touches <code>match.rng</code> (spy test).</td></tr>
+          <tr><td>sub/red-card marker lifecycle</td><td>unit</td><td>Markers appear/disappear at the right minutes from a scripted log.</td></tr>
+          <tr><td>engine untouched</td><td>golden</td><td>Goldens pass with <strong>no re-pin</strong> — the milestone's signature assertion.</td></tr>
+          <tr><td>watching ≠ result change</td><td>determinism</td><td>Career advanced with viewer on vs off (headless) produces deep-equal state.</td></tr>
+          <tr><td>live pause semantics</td><td>browser smoke</td><td>Goal auto-pauses the animation; a sub made while paused appears on the pitch after resume.</td></tr>
+          <tr><td>replay from summary</td><td>browser smoke</td><td>Watch replay opens, plays a highlight, score overlay matches stored result.</td></tr>
+          <tr><td>frame budget</td><td>perf (manual + smoke timing)</td><td>Full-match 4× replay completes; no rAF handler &gt; 8ms in sampled profile.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-7 — and the track — is done when</span>
+        <ol>
+          <li>A league match can be watched end-to-end on the pitch view: passes travel
+          between named players, runs happen, tackles turn the ball over, goals go in.</li>
+          <li>Highlights mode replays any past result from the week summary.</li>
+          <li><code>git diff src/engine/</code> for the milestone is empty.</li>
+          <li>The full test suite — goldens unre-pinned, invariants, smoke — is green.</li>
+          <li>Track acceptance (11 · §9) reviewed and signed off against the shipped
+          product.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Animation reads as chaos (markers teleporting)</td><td>Zone elasticity + easing caps marker speed; jitter bounded to 6 units; highlight mode is the fallback watching experience.</td></tr>
+          <tr><td>Viewer tempts engine tweaks ("just expose one more field")</td><td>Hard rule + golden no-re-pin test; needed fields become an EE-6 follow-up ticket.</td></tr>
+          <tr><td>Wall-time pacing vs sim minutes drifts</td><td>Animator owns the clock; sim minutes are consumed from a queue, never awaited on render.</td></tr>
+          <tr><td>Scope magnet (kits, zoom, sharing)</td><td>Out-of-scope table is explicit; replay sharing already parked in Horizon 3.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m6-action-stream/index.html">← EE-6 · Action Stream</a> · <a href="../../11-engine-evolution.html">Back to the track roadmap</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-7 · The 2D Match Viewer</footer>
+</body>
+</html>

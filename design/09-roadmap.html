@@ -30,6 +30,8 @@
       <a href="07-project-plan.html">07 · Project Plan</a>
       <a href="08-risk-register.html">08 · Risks</a>
       <a href="09-roadmap.html" class="active">09 · Roadmap</a>
+      <a href="10-horizon1-specs.html">10 · Horizon 1 Specs</a>
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a>
     </nav>
 
     <article class="doc">
@@ -88,7 +90,11 @@
       </div>
 
       <h2>2. Near-Term Horizons</h2>
-      <p>High-impact, lower-effort features that close loops the current systems already opened.</p>
+      <p>High-impact, lower-effort features that close loops the current systems already opened.
+      Each of these now has a full buildable specification — requirements, engine design,
+      data-model deltas, UI wireframes, and test plan — in
+      <a href="10-horizon1-specs.html">10 · Horizon 1 Specs</a>
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a>.</p>
       <div class="timeline">
         <div class="phase future">
           <div class="ph-head">HORIZON 1 · NEAR <span class="stat-pill">low–medium effort</span></div>
@@ -101,6 +107,7 @@
             fixture; extending it to "play but don't watch" is a small step.</li>
             <li><strong>Effort:</strong> Low. Mostly a UI button + a flag to <code>advanceWeek</code>.</li>
             <li><strong>Risk:</strong> must keep determinism intact.</li>
+            <li><strong>Spec:</strong> <a href="10-horizon1-specs.html#f1">10 · §2 (AST)</a>.</li>
           </ul>
         </div>
         <div class="phase future">
@@ -111,7 +118,9 @@
           <ul>
             <li><strong>Basis:</strong> <code>seasonStats</code> already aggregates apps, goals,
             assists, and ratings — the data exists, only the views are missing.</li>
-            <li><strong>Effort:</strong> Low. Pure UI.</li>
+            <li><strong>Effort:</strong> Low. Pure UI (plus two small accumulators for
+            discipline and clean sheets — see spec).</li>
+            <li><strong>Spec:</strong> <a href="10-horizon1-specs.html#f2">10 · §3 (STA)</a>.</li>
           </ul>
         </div>
         <div class="phase future">
@@ -124,6 +133,7 @@
             <li><strong>Basis:</strong> morale exists and moves with results but is otherwise
             inert; the inbox + pending-offers pattern is the template.</li>
             <li><strong>Effort:</strong> Medium. New state + UI + news wiring.</li>
+            <li><strong>Spec:</strong> <a href="10-horizon1-specs.html#f3">10 · §4 (INT)</a>.</li>
           </ul>
         </div>
       </div>
@@ -280,7 +290,7 @@ Impact│  · Assistant/holiday          · Staff &amp; facilities
         </ol>
       </div>
 
-      <p style="margin-top:30px"><a href="08-risk-register.html">← 08 · Risks</a> · <a href="index.html">Back to index</a></p>
+      <p style="margin-top:30px"><a href="08-risk-register.html">← 08 · Risks</a> · <a href="10-horizon1-specs.html">Next: 10 · Horizon 1 Specs →</a> · <a href="index.html">Back to index</a></p>
     </article>
   </main>
 

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-4 · Per-Player Instructions — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-4</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="index.html" class="active">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../05-ui-design.html">05 · UI Design</a>
+      <a href="../../04-engine-specs.html">04 · Engine Specs</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-4 · Per-Player Instructions</h1>
+      <p class="subtitle">Click a player on the tactics pitch and tell him what to do — forward runs and pressing, persisted with tactics, drawn as arrows, and honoured by the engine</p>
+
+      <h2>1. Purpose</h2>
+      <p>This is the interaction that defined FM's takeover of CM: tactics stop being a
+      team-wide dial and become <em>per player</em>. Click the right-back → "get forward".
+      Click the ageing striker → "sit and hold". The engine consumes instructions as
+      modifiers on contribution weights, so an attacking full-back genuinely creates more
+      and defends less. Two instruction axes keep the scope honest; the plumbing is built
+      so later axes (marking, passing style) are additive entries in one table.</p>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Two instruction axes (runs, pressing) per formation slot; engine modifier
+            plumbing; tactics-pitch click panel + arrows; persistence with saved tactics;
+            mid-match changes at any pause; AI presets by mentality; save migration.</td>
+            <td>More axes (marking, passing style, width); per-opponent saved tactic
+            sets; drag-repositioning of slots; instruction effects on set pieces;
+            instruction-driven commentary lines (EE-6 does commentary properly).</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: engine modifiers + squad-list instruction editing ship
+      even if the pitch click-panel slips; the panel is the headline UX though, so it is
+      sequenced first in the build order, not last.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>PTI-01</td><td>Each formation slot (not player — instructions travel with the shirt, as in FM classic) carries <code>runs ∈ {forward, balanced, hold}</code> and <code>press ∈ {high, normal, deep}</code>; default balanced/normal.</td><td>Must</td></tr>
+          <tr><td>PTI-02</td><td>Clicking a player marker on the tactics pitch opens an inline instruction panel for that slot; changes apply immediately and render as pitch arrows (§6).</td><td>Must</td></tr>
+          <tr><td>PTI-03</td><td>Engine effects of <code>runs=forward</code>: attack contribution ×1.15, defensive contribution ×0.85, shot weight ×1.5, assist weight ×1.4, condition decay ×1.15. <code>hold</code> is the inverse (×0.87/×1.12/×0.6/×0.7/×0.9). GK slot: axis disabled.</td><td>Must</td></tr>
+          <tr><td>PTI-04</td><td>Engine effects of <code>press=high</code>: tackle-attempt weight ×1.4, foul chance ×1.2, opposition pass completion −4pts, condition decay ×1.10; <code>deep</code> inverse (×0.7/×0.85/+3pts/×0.95) plus own-side chance-concession quality −5%.</td><td>Must</td></tr>
+          <tr><td>PTI-05</td><td>Instructions persist in <code>game.tactics</code> per slot, survive save/load, apply to <code>selectXI</code>-driven lineups (assistant/delegated matches included), and are changeable mid-match at any pause via <code>setTactics</code>-adjacent API.</td><td>Must</td></tr>
+          <tr><td>PTI-06</td><td>AI clubs derive instructions from mentality: attacking → full-backs forward + press high; defensive → holds + deep; normal → balanced. Applied in <code>aiSetup</code> and in-match AI mentality switches.</td><td>Must</td></tr>
+          <tr><td>PTI-07</td><td>Team-level sanity readout: the tactics screen shows a balance strip (e.g. "Very attacking right side · low cover in midfield") derived from the instruction set.</td><td>Should</td></tr>
+          <tr><td>PTI-08</td><td>Determinism: instruction changes draw no RNG; effects flow through existing draws. Statistical invariants hold with default instructions (they are the no-op).</td><td>Must</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 One modifier table, consulted at existing decision points</h3>
+      <pre><code>// team.js
+export const INSTRUCTIONS = {
+  runs:  { forward: { atkC:1.15, defC:0.85, shootW:1.5, assistW:1.4, decay:1.15 },
+           balanced:{},                                  // all 1.0
+           hold:    { atkC:0.87, defC:1.12, shootW:0.6, assistW:0.7, decay:0.9 } },
+  press: { high:   { tackleW:1.4, foulCh:1.2, oppPass:-4, decay:1.10 },
+           normal: {},
+           deep:   { tackleW:0.7, foulCh:0.85, oppPass:+3, concedeQ:0.95 } },
+};
+instructionMods(slotInstr) → merged {atkC, defC, shootW, assistW, tackleW, foulCh, oppPass, decay, concedeQ}</code></pre>
+      <p>Integration points, all existing: <code>#eff</code> multiplies atkC/defC into the
+      attribute it is computing (attack-side vs defence-side split per unit-strength
+      kind); <code>#pick</code> weights multiply shootW/assistW/tackleW; the build-up pass
+      roll adds the defending side's summed <code>oppPass</code> (scaled by pressers on
+      pitch); fatigue phase multiplies <code>decay</code>. Because defaults are exact
+      1.0/0-point no-ops, a default-instruction match reproduces today's engine — that is
+      the regression stance (PTI-08).</p>
+
+      <h3>4.2 API &amp; persistence</h3>
+      <pre><code>// game.js
+setSlotInstruction(slotIndex, axis, value)   // validates, persists in game.tactics
+// game.tactics gains: instructions: [{runs, press} × 11] aligned to formation slots
+// MatchSim setup gains: starters[i].instr — normalizeSetup defaults balanced/normal
+// MatchSim.setInstruction(sideKey, slotIndex, axis, value) — mid-match, logs a
+// 'tactics' event, no RNG draw</code></pre>
+      <p>Formation changes remap instructions with the slot (keeper excluded); a formation
+      with fewer compatible slots resets orphaned entries to defaults and says so in the
+      tactics log line.</p>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Where</th><th>Type</th><th>Migration default</th></tr></thead>
+        <tbody>
+          <tr><td><code>instructions</code></td><td><code>game.tactics</code></td><td>[{runs, press}] ×11</td><td>all balanced/normal</td></tr>
+        </tbody>
+      </table>
+      <p>SAVE_VERSION +1, additive-only, trivial migration. AI instructions are derived at
+      setup time, never persisted.</p>
+
+      <h2>6. UI Design</h2>
+      <div class="diagram">
+<pre>
+TACTICS — click DR Finch → instruction panel; arrows show runs/press
+┌──────────────────────────────────────────────────────────────────┐
+│                 ⬤ ST Hurst        ⬤ ST Vance                     │
+│                                                                  │
+│   ⬤ MR Okonkwo   ⬤ MC Reid   ⬤ MC Salter   ⬤ ML Diaz            │
+│    ▲                                          ▲                  │
+│   ⬤̲ DR Finch     ⬤ DC Cole   ⬤ DC Mbeki    ⬤ DL Ward            │
+│    ↑ fwd runs                                 ⌄ press deep       │
+│                       ⬤ GK Bexley                                │
+│ ┌──────────────────────────────────────────────┐                 │
+│ │ DR · J. FINCH                            ✕   │                 │
+│ │ Forward runs   [ FORWARD ] [ balanced ] [ hold ]               │
+│ │ Pressing       [ high ] [ NORMAL ] [ deep ]  │                 │
+│ │ effect: +crossing chances, −defensive cover  │                 │
+│ └──────────────────────────────────────────────┘                 │
+│  Balance: attacking right flank · solid centre    ◀ PTI-07       │
+│  Formation [4-4-2 ▾]  Mentality [Normal ▾]  [SAVE AS DEFAULT]    │
+└──────────────────────────────────────────────────────────────────┘
+
+Arrow language:  ↑ solid = forward runs   ⌃ dotted = press high
+                 ▽ = hold / sit deep      (none) = balanced/normal
+
+MATCH DAY (paused) — same panel, same markers, live
+┌──────────────────────────────────────────────────────────────────┐
+│  62' Kettleworth 1-1 Milton   [PAUSED]  [SUBS] [TACTICS]         │
+│  ...pitch as above; clicking a marker edits instructions;        │
+│  log: "62' Finch told to get forward"                            │
+└──────────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <p>Panel is the inline-expansion pattern (no modal), matching the squad-screen talk
+      panel from Horizon 1. Selected value renders in caps/filled; keyboard: 1–3 select,
+      Esc closes. On mobile-width, the panel docks under the pitch.</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>defaults are a no-op</td><td>golden</td><td>Match with all-default instructions is byte-identical to pre-EE-4 goldens (no re-pin needed if wiring is truly multiplicative-by-1).</td></tr>
+          <tr><td>forward runs attack more</td><td>statistical</td><td>Full-backs on forward: their shots+assists rise ≥ 40%, team goals conceded rise, vs control (~300 sims).</td></tr>
+          <tr><td>hold protects</td><td>statistical</td><td>All-hold XI concedes fewer and scores fewer than control.</td></tr>
+          <tr><td>press trades fouls for turnovers</td><td>statistical</td><td>All-high-press: opponent pass completion down, own tackles and fouls/cards up.</td></tr>
+          <tr><td>fatigue cost</td><td>unit</td><td>Forward+high-press player's condition at 90' is lower than balanced twin by the modelled margin.</td></tr>
+          <tr><td>persistence &amp; remap</td><td>unit</td><td>Instructions survive save/load; 4-4-2→5-3-2 switch remaps sensibly and resets orphans to defaults.</td></tr>
+          <tr><td>mid-match change is deterministic</td><td>determinism</td><td>Scripted mid-match instruction change replays identically from the seed.</td></tr>
+          <tr><td>AI presets applied</td><td>unit</td><td>Attacking AI side's full-back slots are forward/high; defensive side hold/deep.</td></tr>
+          <tr><td>panel smoke</td><td>browser smoke</td><td>Click marker → panel opens; select forward → arrow appears; persists after reload.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-4 is done when</span>
+        <ol>
+          <li>A player can be clicked on the tactics pitch, given instructions, and the
+          pitch shows the arrows — pre-match and at any in-match pause.</li>
+          <li>The statistical tests prove instructions change play in the promised
+          directions and magnitudes.</li>
+          <li>Default-instruction matches replay byte-identical to pre-milestone goldens.</li>
+          <li>Old saves load with balanced defaults and play on.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Stacked modifiers unbalance the sim (11 × forward+press)</td><td>Invariant suite runs an extremes case; effects are multiplicative on <em>weights</em>, and chanceProb stays clamped (0.06–0.5) as today.</td></tr>
+          <tr><td>UI hit-targets on a dense pitch</td><td>Markers get a 32px hit radius; adjacent-marker ties resolve to nearest; smoke test covers it.</td></tr>
+          <tr><td>Instruction/slot drift across formation changes</td><td>Remap rule specified (§4.2) + dedicated unit test.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m3-attributes/index.html">← EE-3 · Attributes</a> · <a href="../m5-ball-model/index.html">Next: EE-5 · Ball Model →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-4 · Per-Player Instructions</footer>
+</body>
+</html>

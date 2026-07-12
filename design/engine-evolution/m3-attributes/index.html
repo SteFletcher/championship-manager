@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-3 · Attribute Expansion — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-3</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="index.html" class="active">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../03-data-model.html">03 · Data Model</a>
+      <a href="../../04-engine-specs.html">04 · Engine Specs</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-3 · Attribute Expansion</h1>
+      <p class="subtitle">From two composite numbers to eight attributes the engine actually consults — with atk/def surviving as derived blends so nothing untouched breaks</p>
+
+      <h2>1. Purpose</h2>
+      <p>FM's tactical depth rests on attributes that <em>mean something distinct</em>: a
+      fast finisher plays differently from a strong passer at the same overall level.
+      Today every engine decision reduces to <code>atk</code>, <code>def</code>, or their
+      average. This milestone introduces six outfield attributes and two goalkeeping
+      attributes, keeps <code>atk</code>/<code>def</code> as derived composites (so the UI
+      tables, transfer valuation, scouting ranges, and any unconverted engine path keep
+      working), and rewires each match-engine decision point to the attribute that should
+      drive it. EE-6's per-action model then has real inputs to consume.</p>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Attribute schema + generation; derived <code>atk</code>/<code>def</code>;
+            engine decision-point rewiring (§4.3); save migration; player profile
+            attribute panel; scouting ranges per attribute; development/aging applied
+            per-attribute.</td>
+            <td>New mechanics (no new event types); weekly training focus (Horizon 2 item);
+            hidden personality attributes beyond existing <code>consistency</code> /
+            <code>injuryProne</code>; UI redesign of squad tables (they keep showing
+            ATK/DEF composites this session — the profile shows the detail).</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: schema, generation, migration, and derived composites
+      ship with at minimum the three highest-value rewirings (pass completion, shot
+      resolution, tackle success); remaining decision points (§4.3 rows 4–7) can follow
+      next session without schema churn.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>ATTR-01</td><td>Outfield attributes (1–99): <code>passing</code>, <code>finishing</code>, <code>tackling</code>, <code>positioning</code>, <code>pace</code>, <code>stamina</code>. Goalkeepers additionally: <code>handling</code>, <code>reflexes</code> (outfielders get low GK attrs, 1–15).</td><td>Must</td></tr>
+          <tr><td>ATTR-02</td><td><code>atk</code> and <code>def</code> become pure derived getters: atk = .35·finishing + .30·passing + .20·pace + .15·positioning; def = .40·tackling + .35·positioning + .25·pace; GK def = .5·handling + .5·reflexes. Rounded to int, still 1–99.</td><td>Must</td></tr>
+          <tr><td>ATTR-03</td><td>Generation produces attribute profiles by position archetype (§4.2): a ST's finishing ≫ tackling, a DM's inverse; within-archetype spread via the squad-generation RNG.</td><td>Must</td></tr>
+          <tr><td>ATTR-04</td><td>Save migration expands each player's atk/def into the eight attributes deterministically (seeded from save seed + player id) such that the derived composites round-trip to within ±2 of the original values.</td><td>Must</td></tr>
+          <tr><td>ATTR-05</td><td>Engine decision points consume specific attributes per the wiring table (§4.3); no decision point consults raw <code>atk</code>/<code>def</code> directly in <code>match.js</code> when a specific attribute exists for it.</td><td>Must</td></tr>
+          <tr><td>ATTR-06</td><td>Condition decay scales with stamina: per-minute decay ×(1.25 − stamina/198), so a 90-stamina player fades visibly slower than a 40-stamina one.</td><td>Must</td></tr>
+          <tr><td>ATTR-07</td><td>Yearly development/aging (players.js) mutates individual attributes, not composites; pace and stamina decline first with age, positioning grows latest — matching football reality.</td><td>Must</td></tr>
+          <tr><td>ATTR-08</td><td>Scouting masks each attribute independently with the existing estimate-range mechanic; a scout report reveals all eight.</td><td>Must</td></tr>
+          <tr><td>ATTR-09</td><td>Player profile screen shows the eight attributes as labelled bars; squad/transfer tables keep composite ATK/DEF columns.</td><td>Must</td></tr>
+          <tr><td>ATTR-10</td><td>Statistical invariants hold; goldens re-pinned once ("EE-3 attribute wiring"). Transfer valuation (<code>ability</code>-based) shifts by &lt; 5% mean across the league after migration.</td><td>Must</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 Schema &amp; compatibility</h3>
+      <pre><code>// players.js
+export const OUTFIELD_ATTRS = ['passing','finishing','tackling','positioning','pace','stamina'];
+export const GK_ATTRS = ['handling','reflexes'];
+
+// Derived composites — defined once, used by ability(), UI, transfers, scouts:
+export function atkOf(p) { /* ATTR-02 blend */ }
+export function defOf(p) { /* ATTR-02 blend; GK branch */ }
+// Plain data players keep literal atk/def in old saves until migration rewrites
+// them; post-migration, atk/def are written-through on any attribute change.</code></pre>
+      <p>Implementation choice: store computed <code>atk</code>/<code>def</code> as plain
+      fields recomputed on any attribute write (not JS getters) — players are plain JSON
+      across saves and structuredClone paths, and <code>validateTeam</code> keeps
+      validating them untouched.</p>
+
+      <h3>4.2 Position archetypes (generation &amp; migration)</h3>
+      <table class="grid">
+        <thead><tr><th>Position</th><th>High (μ ≈ base+10)</th><th>Mid (μ ≈ base)</th><th>Low (μ ≈ base−15)</th></tr></thead>
+        <tbody>
+          <tr><td>GK</td><td>handling, reflexes, positioning</td><td>stamina</td><td>outfield rest</td></tr>
+          <tr><td>DC</td><td>tackling, positioning</td><td>stamina, passing</td><td>finishing, pace±</td></tr>
+          <tr><td>DR/DL</td><td>pace, tackling</td><td>stamina, passing, positioning</td><td>finishing</td></tr>
+          <tr><td>DM</td><td>tackling, positioning, passing</td><td>stamina</td><td>finishing, pace</td></tr>
+          <tr><td>MC</td><td>passing, stamina</td><td>positioning, tackling</td><td>finishing±</td></tr>
+          <tr><td>MR/ML</td><td>pace, passing</td><td>stamina, finishing</td><td>tackling</td></tr>
+          <tr><td>AMC</td><td>passing, finishing</td><td>pace, positioning</td><td>tackling</td></tr>
+          <tr><td>ST</td><td>finishing, pace</td><td>positioning, stamina</td><td>tackling, passing±</td></tr>
+        </tbody>
+      </table>
+      <p><code>base</code> is solved from the player's target ability so club strength
+      tiers are preserved; migration solves from existing atk/def instead (least-squares
+      against the ATTR-02 blends, then seeded jitter, then round-trip check).</p>
+
+      <h3>4.3 Decision-point wiring</h3>
+      <table class="grid">
+        <thead><tr><th>#</th><th>Decision (today)</th><th>Becomes</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Pass completion: <code>(atk+def)/2</code> (<code>match.js:509</code>)</td><td><code>passing</code></td></tr>
+          <tr><td>2</td><td>Shot miss prob: <code>shooter.atk</code> (<code>match.js:649</code>)</td><td><code>finishing</code></td></tr>
+          <tr><td>3</td><td>Goal vs keeper: <code>atk</code> vs GK <code>def×4</code> (<code>match.js:678</code>)</td><td><code>finishing</code> vs <code>(handling+reflexes)/2 × 4</code></td></tr>
+          <tr><td>4</td><td>Tackle success: <code>def</code> (<code>match.js:517</code>)</td><td><code>tackling</code></td></tr>
+          <tr><td>5</td><td>Unit strengths (<code>#unit</code>)</td><td>DF: .6 tackling+.4 positioning · MF: passing-led blend · FW: .6 finishing+.4 pace · GK: handling/reflexes — via one <code>unitContribution(p, unit)</code> helper</td></tr>
+          <tr><td>6</td><td>Condition decay (flat 0.3/min)</td><td>× stamina factor (ATTR-06)</td></tr>
+          <tr><td>7</td><td>Penalty taking/saving: <code>atk</code> vs <code>def</code></td><td><code>finishing</code> vs <code>reflexes</code></td></tr>
+        </tbody>
+      </table>
+      <p>Emergent, intended consequences: a high-<code>positioning</code> defence
+      concedes fewer clear chances even with modest tackling; pace matters at both ends
+      (blend weights keep it secondary until EE-6 gives it runs and breaks to drive).</p>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Where</th><th>Type</th><th>Migration default</th></tr></thead>
+        <tbody>
+          <tr><td>6 outfield attrs</td><td>player</td><td>int 1–99</td><td>solved from atk/def per archetype (ATTR-04)</td></tr>
+          <tr><td><code>handling</code>, <code>reflexes</code></td><td>player</td><td>int 1–99 (1–15 outfield)</td><td>GK: solved from def; others: seeded low</td></tr>
+          <tr><td><code>atk</code>, <code>def</code></td><td>player</td><td>int 1–99</td><td>kept; rewritten as derived blends</td></tr>
+          <tr><td><code>scouted</code> ranges</td><td>scouting state</td><td>per-attribute</td><td>widened from existing atk/def ranges</td></tr>
+        </tbody>
+      </table>
+      <p>SAVE_VERSION +1, additive-only. Attribute count is deliberately eight — enough
+      for distinct play styles, small enough that generation, scouting UI, and the
+      migration round-trip all stay session-sized.</p>
+
+      <h2>6. UI Design</h2>
+      <div class="diagram">
+<pre>
+PLAYER PROFILE — attribute panel replaces the ATK/DEF pair
+┌────────────────────────────────────────────────────────────────┐
+│  S. HURST · ST · 26 · Kettleworth Utd          Value £425k     │
+│                                                                │
+│  TECHNICAL                    PHYSICAL                         │
+│  Passing      54 ▓▓▓▓▓░░░░    Pace         81 ▓▓▓▓▓▓▓▓░       │
+│  Finishing    87 ▓▓▓▓▓▓▓▓▓    Stamina      70 ▓▓▓▓▓▓▓░░       │
+│  Tackling     18 ▓▓░░░░░░░    Positioning  63 ▓▓▓▓▓▓░░░       │
+│                                                                │
+│  Overall  ATK 84 · DEF 31     Form 7.4 · Morale 85 · Cond 96%  │
+└────────────────────────────────────────────────────────────────┘
+
+SCOUT REPORT — unscouted player, per-attribute ranges
+┌────────────────────────────────────────────────────────────────┐
+│  D. Okafor · ST · Milton Rovers            [ SCOUT £15k ]      │
+│  Finishing  72–88    Pace     65–85    Passing   40–60         │
+│  Tackling   10–30    Stamina  55–75    Position. 50–70         │
+└────────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <p>Bars use the existing 1–99 colour ramp from the squad table. Squad and transfer
+      list tables are unchanged this session (composites remain their columns), keeping
+      the UI delta small.</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>composites round-trip</td><td>unit</td><td>Migrated players: derived atk/def within ±2 of originals, all attrs in range, GK attrs low for outfielders.</td></tr>
+          <tr><td>archetypes hold</td><td>unit</td><td>Generated STs: mean finishing &gt; mean tackling + 25; DMs inverse; GKs top handling/reflexes.</td></tr>
+          <tr><td>migration determinism</td><td>unit</td><td>Same save migrated twice → identical attributes.</td></tr>
+          <tr><td>finishing wins games</td><td>statistical</td><td>Two squads, equal composites, one +15 finishing −15 tackling as forwards: it outscores the balanced control (~300 sims).</td></tr>
+          <tr><td>stamina shapes fatigue</td><td>unit + statistical</td><td>90- vs 40-stamina player condition gap &gt; 8 points at minute 90; low-stamina XIs concede relatively more after minute 70.</td></tr>
+          <tr><td>keeper attrs consulted</td><td>statistical</td><td>+15 handling/reflexes keeper lowers goals conceded measurably vs control.</td></tr>
+          <tr><td>valuation stability</td><td>unit</td><td>League-wide mean <code>ability</code>/value shift &lt; 5% post-migration (ATTR-10).</td></tr>
+          <tr><td>invariants + goldens</td><td>statistical/golden</td><td>EE-1 bands pass; goldens re-pinned once with reason.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-3 is done when</span>
+        <ol>
+          <li>The profile screen shows eight attributes; scout reports range each one.</li>
+          <li>The engine consults finishing/passing/tackling/handling at the wired
+          decision points, proven by the statistical tests above.</li>
+          <li>An old save migrates with composites within ±2 and plays on.</li>
+          <li>Invariants green; one deliberate golden re-pin.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Migration distorts club strength tiers</td><td>Least-squares solve + round-trip assertion + valuation-stability test (ATTR-10).</td></tr>
+          <tr><td>Two sources of truth for atk/def</td><td>Write-through recomputation in one helper; a test mutates an attribute and asserts composites moved.</td></tr>
+          <tr><td>Wiring shifts match balance</td><td>Each wired point keeps today's coefficient shape (only the input changes); invariants gate the sum.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m2-positions-formations/index.html">← EE-2 · Positions</a> · <a href="../m4-player-instructions/index.html">Next: EE-4 · Instructions →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-3 · Attribute Expansion</footer>
+</body>
+</html>

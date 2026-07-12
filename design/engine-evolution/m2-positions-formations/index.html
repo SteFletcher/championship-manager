@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-2 · Positions &amp; Formation Geometry — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-2</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="index.html" class="active">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../03-data-model.html">03 · Data Model</a>
+      <a href="../../05-ui-design.html">05 · UI Design</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-2 · Positions &amp; Formation Geometry</h1>
+      <p class="subtitle">From four coarse units to ten pitch positions with familiarity grades and slot coordinates — the substrate for instructions, the viewer, and real squad-building depth</p>
+
+      <h2>1. Purpose</h2>
+      <p>Today a player is a <code>GK</code>, <code>DF</code>, <code>MF</code>, or
+      <code>FW</code> and is either in position or 25% worse (<code>slotPenalty</code>,
+      <code>team.js:26</code>). FM's depth starts here: a right-back is not a centre-back,
+      a winger is not a playmaker, and a formation is a <em>shape on the pitch</em>, not
+      three numbers. This milestone introduces ten positions, formation slot maps with
+      coordinates, and a familiarity ladder — while deriving the old units from position
+      families so the engine's calibrated balance carries straight over.</p>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Position taxonomy + familiarity; formation slot maps with coordinates;
+            <code>selectXI</code> slot assignment; match engine familiarity hook; squad
+            generation + save migration; squad/tactics UI position labels; pitch view
+            placement by coordinates.</td>
+            <td>Per-player instructions (EE-4); attribute changes (EE-3); drag-and-drop
+            slot editing in the tactics view (players are auto-assigned; manual slot swaps
+            stay list-based as today); new formations beyond re-expressing the current
+            five; secondary-position training.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: engine + data + migration ship with squad-screen
+      labels; the pitch-view coordinate rendering can roll to the EE-4 session (which
+      rebuilds that screen anyway).</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>POS-01</td><td>Positions are <code>GK, DR, DC, DL, DM, MR, MC, ML, AMC, ST</code>. Each maps to a unit family: DF = {DR, DC, DL}, MF = {DM, MR, MC, ML, AMC}, FW = {ST}. All existing unit math reads through this mapping.</td><td>Must</td></tr>
+          <tr><td>POS-02</td><td>Each of the five formations becomes an ordered list of 11 slots with position + pitch coordinates (x: 0–100 left→right from the team's own view, y: 0–100 own goal→opponent goal), e.g. 4-4-2 = GK, DR, DC, DC, DL, MR, MC, MC, ML, ST, ST (§4.2).</td><td>Must</td></tr>
+          <tr><td>POS-03</td><td>A player has a natural <code>position</code> and optional <code>secondaries</code> (0–2 positions). Familiarity(player, slot): natural 1.0 · secondary 0.9 · same unit family 0.8 · adjacent family 0.65 · GK↔outfield 0.4. Replaces <code>slotPenalty</code> everywhere.</td><td>Must</td></tr>
+          <tr><td>POS-04</td><td><code>selectXI</code> assigns players to slots (not unit counts) maximising Σ fitness × familiarity, preferring naturals per slot; deterministic; injured/banned still never picked.</td><td>Must</td></tr>
+          <tr><td>POS-05</td><td>The legacy <code>pos</code> field remains, derived from position family, so every untouched consumer (UI tables, transfers, scouting, AI) keeps working unchanged this session.</td><td>Must</td></tr>
+          <tr><td>POS-06</td><td>Squad generation (<code>data/teams.js</code> path) produces position-balanced squads: exactly 2 GK per club, ≥ 1 natural player per slot of the club's default 4-4-2, plus sensible secondaries (~35% of outfielders get one).</td><td>Must</td></tr>
+          <tr><td>POS-07</td><td>Save migration derives detailed positions deterministically from <code>pos</code> + attribute profile + the save's seed (no <code>Math.random</code>): e.g. a DF becomes DR/DC/DL with DC weighted 2×; migration is idempotent.</td><td>Must</td></tr>
+          <tr><td>POS-08</td><td>Squad, tactics, transfer, and scout screens show detailed position labels; match-day pitch view places players at their slot coordinates.</td><td>Must</td></tr>
+          <tr><td>POS-09</td><td>Statistical invariants (EE-1) hold unchanged; goldens are re-pinned once with reason "EE-2 familiarity ladder".</td><td>Must</td></tr>
+          <tr><td>POS-10</td><td>Out-of-position play is visible: the lineup panel marks familiarity &lt; 1 with an amber tag (e.g. <code>MC ▸ DM</code>).</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 Taxonomy &amp; familiarity</h3>
+      <pre><code>// team.js
+export const DETAILED_POSITIONS = ['GK','DR','DC','DL','DM','MR','MC','ML','AMC','ST'];
+export const UNIT_OF = { GK:'GK', DR:'DF', DC:'DF', DL:'DF',
+                         DM:'MF', MR:'MF', MC:'MF', ML:'MF', AMC:'MF', ST:'FW' };
+
+export function familiarity(player, slotPos) {
+  if (player.position === slotPos) return 1.0;
+  if (player.secondaries?.includes(slotPos)) return 0.9;
+  if (UNIT_OF[player.position] === UNIT_OF[slotPos]) return 0.8;
+  if (player.position === 'GK' || slotPos === 'GK') return 0.4;
+  return 0.65;                     // cross-unit outfield
+}</code></pre>
+      <p>The match engine's single integration point is <code>#eff</code>
+      (<code>match.js:278</code>): <code>slotPenalty(player, slot)</code> →
+      <code>familiarity(player, entrySlotPosition)</code>. On-pitch entries carry the
+      detailed slot; <code>#unit</code>/<code>slotCounts</code> group by
+      <code>UNIT_OF</code>, so strengths, sendings-off maths, and formation switching keep
+      their semantics.</p>
+
+      <h3>4.2 Formation slot maps</h3>
+      <table class="grid">
+        <thead><tr><th>Formation</th><th>Slots (beyond GK)</th></tr></thead>
+        <tbody>
+          <tr><td>4-4-2</td><td>DR DC DC DL · MR MC MC ML · ST ST</td></tr>
+          <tr><td>4-3-3</td><td>DR DC DC DL · DM MC MC · ST ST ST <em>(wide STs by coordinate)</em></td></tr>
+          <tr><td>4-5-1</td><td>DR DC DC DL · MR MC AMC MC ML · ST</td></tr>
+          <tr><td>3-5-2</td><td>DC DC DC · MR MC DM MC ML · ST ST</td></tr>
+          <tr><td>5-3-2</td><td>DR DC DC DC DL · MC DM MC · ST ST</td></tr>
+        </tbody>
+      </table>
+      <p>Coordinates example, 4-4-2:</p>
+      <div class="diagram">
+<pre>
+y=94                     ST(38,80)   ST(62,80)
+y=~62   MR(10,62)  MC(38,60)  MC(62,60)  ML(90,62)
+y=~30   DR(10,32)  DC(38,28)  DC(62,28)  DL(90,32)
+y=6                        GK(50,6)
+        x: 0 ─────────────── 50 ─────────────── 100
+</pre>
+      </div>
+      <p>Coordinates are presentation truth for the pitch view and EE-7; the simulation
+      does not consume them this milestone (EE-5/6 will).</p>
+
+      <h3>4.3 Slot-based selectXI</h3>
+      <p>Replace unit-count filling with per-slot assignment: order slots GK → DF → MF →
+      FW; for each, pick the highest <code>fitness(p) × familiarity(p, slot)</code>
+      unassigned player, requiring naturals-first per slot as today (keeps determinism and
+      the existing "best XI" character). Bench selection unchanged. Complexity stays
+      trivial (11 × squad size).</p>
+
+      <h3>4.4 Generation &amp; migration</h3>
+      <pre><code>// players.js — deterministic detailing (used by both generation and migration)
+detailPosition(rng, unitPos, { atk, def }) →
+  GK → GK
+  DF → weighted pick: DC ×2, DR ×1, DL ×1
+  MF → atk − def &gt; 12 → AMC · def − atk &gt; 12 → DM · else MR/MC/ML (MC ×2)
+  FW → ST
+secondaries: 35% of outfielders get 1 adjacent position (DC→DM, MR→MC, AMC→ST…)</code></pre>
+      <p>Migration (SAVE_VERSION +1) runs <code>detailPosition</code> with an RNG seeded
+      from the save seed + player id, so re-loading is idempotent and two loads agree.</p>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Where</th><th>Type</th><th>Migration default</th></tr></thead>
+        <tbody>
+          <tr><td><code>position</code></td><td>player</td><td>enum DETAILED_POSITIONS</td><td><code>detailPosition(...)</code> (POS-07)</td></tr>
+          <tr><td><code>secondaries</code></td><td>player</td><td>position[] (0–2)</td><td>derived, seeded</td></tr>
+          <tr><td><code>pos</code> <em>(existing)</em></td><td>player</td><td>unit enum</td><td>kept; now derived = <code>UNIT_OF[position]</code></td></tr>
+          <tr><td><code>slots</code></td><td>FORMATIONS[name]</td><td>[{pos, x, y}] ×11</td><td>static data, not persisted</td></tr>
+        </tbody>
+      </table>
+
+      <h2>6. UI Design</h2>
+      <div class="diagram">
+<pre>
+SQUAD — POS column upgraded, familiarity tags on lineup
+┌────────────────────────────────────────────────────────────────┐
+│  #  PLAYER          POS   AGE  ATK  DEF  FORM  MORALE  …       │
+│  1  T. Bexley       GK    31   12   84   6.8   72              │
+│  4  R. Cole         DC    28   22   81   7.1   80              │
+│  7  J. Okonkwo      MR/MC 24   68   44   6.9   77   ◀ secondary│
+│ 10  S. Hurst        ST    26   87   18   7.4   85              │
+└────────────────────────────────────────────────────────────────┘
+
+TACTICS — pitch view places players at slot coordinates
+┌────────────────────────────────────────────────────────────────┐
+│                    ⬤ ST Hurst      ⬤ ST Vance                  │
+│   ⬤ MR Okonkwo  ⬤ MC Reid   ⬤ MC Salter   ⬤ ML Diaz           │
+│   ⬤ DR Finch    ⬤ DC Cole   ⬤ DC Mbeki    ⬤ DL Ward           │
+│                        ⬤ GK Bexley                             │
+│  Formation [4-4-2 ▾]   Mentality [Normal ▾]                    │
+│  ⚠ Reid: MC ▸ DM (familiar 80%)        ◀ POS-10 amber tag      │
+└────────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <p>Transfer and scout tables swap the POS column to detailed labels (same column
+      width: two–three chars). Opposition report's predicted XI inherits the new
+      <code>selectXI</code> for free.</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>familiarity ladder</td><td>unit</td><td>All five grades returned for constructed player/slot pairs; monotone (natural ≥ secondary ≥ unit ≥ cross ≥ GK-mismatch).</td></tr>
+          <tr><td>selectXI fills every slot</td><td>unit</td><td>All formations produce 11 assigned slots; naturals preferred; injured/banned excluded; deterministic across runs.</td></tr>
+          <tr><td>legacy pos derived</td><td>unit</td><td>Every generated/migrated player: <code>pos === UNIT_OF[position]</code>; <code>validateTeam</code> untouched consumers pass.</td></tr>
+          <tr><td>generation balance</td><td>unit</td><td>All 24 club squads: exactly 2 GK, every 4-4-2 slot coverable by a natural.</td></tr>
+          <tr><td>migration determinism</td><td>unit</td><td>Same vN save migrated twice → identical positions/secondaries; a full old-format career save loads and plays a week.</td></tr>
+          <tr><td>familiarity costs goals</td><td>statistical</td><td>An XI of naturals beats the same XI shuffled cross-unit (~300 sims, win rate &gt; 60%).</td></tr>
+          <tr><td>invariants hold</td><td>statistical</td><td>EE-1 bands all pass post-change; goldens re-pinned once with reason.</td></tr>
+          <tr><td>pitch coordinates render</td><td>browser smoke</td><td>Tactics screen shows 11 markers at distinct coordinates for each formation.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-2 is done when</span>
+        <ol>
+          <li>A squad screen shows DR/DC/AMC/ST labels and the tactics pitch matches the
+          formation's true geometry.</li>
+          <li>Playing a natural MC at DM shows the amber tag and measurably weaker
+          contribution (statistical test).</li>
+          <li>An old save loads, migrates idempotently, and completes a match week.</li>
+          <li>Invariants green; goldens re-pinned exactly once.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Familiarity ladder shifts scoring balance</td><td>Grades chosen to bracket today's 0.75 penalty; invariant bands are the gate.</td></tr>
+          <tr><td>Hidden consumers of <code>pos</code> semantics</td><td><code>pos</code> keeps its exact meaning (POS-05); grep audit of <code>\.pos\b</code> is a named build step.</td></tr>
+          <tr><td>Migration produces odd squads (e.g. 3 left-backs)</td><td>Detailing weights + a post-migration rebalance pass that reassigns duplicates within the unit.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m1-extensible-core/index.html">← EE-1 · Extensible Core</a> · <a href="../m3-attributes/index.html">Next: EE-3 · Attributes →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-2 · Positions &amp; Formation Geometry</footer>
+</body>
+</html>

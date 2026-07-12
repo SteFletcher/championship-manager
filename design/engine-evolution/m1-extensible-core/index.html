@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-1 · Extensible Core — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-1</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="index.html" class="active">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../04-engine-specs.html">04 · Engine Specs</a>
+      <a href="../../06-test-plan.html">06 · Test Plan</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-1 · Extensible Core &amp; Regression Armour</h1>
+      <p class="subtitle">Refactor the match simulator into a phase pipeline, make every event machine-readable, and pin current behaviour so the rest of the track cannot silently break the game</p>
+
+      <h2>1. Purpose</h2>
+      <p>Every later milestone rewrites part of the minute loop. Today that loop is one
+      153-line method (<code>playMinute()</code>, <code>match.js:478–631</code>) plus a
+      84-line chance resolver, and the only protection around it is behavioural tests at
+      the result level. This milestone changes <strong>no gameplay at all</strong>; it
+      restructures the simulator so future changes are local, and builds the apparatus
+      that proves — every session, automatically — that nothing else moved.</p>
+      <div class="callout blue">
+        <span class="label">The contract of this milestone</span>
+        <p>Same seed, same inputs → <strong>byte-identical</strong> <code>finish()</code>
+        output before and after the refactor. Goldens are captured from the current code
+        <em>first</em>, the refactor lands <em>second</em>, and the goldens must still
+        pass. This ordering is part of the spec, not an implementation detail.</p>
+      </div>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Golden-master harness + fixtures; statistical invariant suite; phase
+            pipeline refactor of <code>MatchSim</code>; structured <code>data</code> on all
+            events; regeneration tooling (<code>npm run golden:update</code>).</td>
+            <td>Any behaviour change; any new mechanic; any UI change; save format change;
+            zone/ball concepts (EE-5); event schema for actions that don't exist yet
+            (EE-6 extends the same <code>data</code> field).</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong> if the session runs long: the harness (goldens +
+      invariants) ships even if only <code>playMinute</code> is decomposed and
+      <code>#resolveChance</code> keeps its current shape — the armour matters more than
+      the tidiness.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>CORE-01</td><td><code>playMinute()</code> executes an ordered list of named phase functions, each taking a shared per-minute context; the list is a class-level constant so a future milestone can insert, replace, or reorder phases in one place.</td><td>Must</td></tr>
+          <tr><td>CORE-02</td><td>RNG draw order is exactly preserved: AI tactics (home, away) → auto-subs (home, away) → possession → build-up passes → tackle → fouls/cards (home, away) → injuries (home, away) → chance creation → chance resolution. A code comment at the phase list documents this order as load-bearing.</td><td>Must</td></tr>
+          <tr><td>CORE-03</td><td>Every event pushed by <code>#log</code> carries a structured <code>data</code> object (ids, not names) alongside the existing display <code>text</code>; consumers can reconstruct what happened without parsing commentary strings.</td><td>Must</td></tr>
+          <tr><td>CORE-04</td><td>Golden-master fixtures: ≥ 8 seeds × 3 setup shapes (full squads, explicit XI, prepared lineup; league and knockout) with the full <code>finish()</code> result serialized and hashed. A test fails if any byte differs.</td><td>Must</td></tr>
+          <tr><td>CORE-05</td><td>A statistical invariant suite (<code>test/statistical-invariants.test.js</code>) runs ~400 seeded sims of a balanced fixture and asserts named realism bands (§5.3). It never gets re-baselined casually: bands encode <em>realism</em>, not current behaviour.</td><td>Must</td></tr>
+          <tr><td>CORE-06</td><td><code>node tools/update-goldens.js</code> regenerates fixtures and prints a diff summary (per-seed: score, event count, hash). Regeneration is a deliberate act recorded in the fixture file's header (date + reason).</td><td>Must</td></tr>
+          <tr><td>CORE-07</td><td>All 148 existing tests pass unmodified (they define the public API surface: <code>MatchSim</code>, <code>playMinute</code>, <code>makeSub</code>, <code>setTactics</code>, <code>finish</code>, <code>simulateMatch</code>).</td><td>Must</td></tr>
+          <tr><td>CORE-08</td><td>Phase functions receive everything they need via context; no phase reaches into another phase's locals. New per-minute state (e.g. EE-5's ball zone) will slot into the context object without signature changes.</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 The phase pipeline</h3>
+      <pre><code>// match.js — the minute loop becomes data
+static MINUTE_PHASES = [
+  'halfTimeWhistle',   // minute-46 log line
+  'aiPolicies',        // #aiTacticsPolicy + #autoSubPolicy, home then away
+  'possession',        // midfield battle → ctx.attackerKey / ctx.defenderKey
+  'buildUp',           // passes + tackle bookkeeping and ratings
+  'discipline',        // fouls, yellows, reds — home then away
+  'injuries',          // knocks + forced subs — home then away
+  'chanceCreation',    // chance probability roll → #resolveChance
+  'fatigue',           // condition decay + minutes
+  'snapshot',          // timeline capture
+  'clock',             // end-of-stage check
+];
+
+playMinute() {
+  if (this.finished) return [];
+  this.turnEvents = [];
+  this.minute++;
+  const ctx = { minute: this.minute, rng: this.rng };  // grows in later EEs
+  for (const name of MatchSim.MINUTE_PHASES) this[`#phase_${name}`]?.(ctx) ?? this.#phases[name](ctx);
+  return this.turnEvents;
+}</code></pre>
+      <p>Each phase is a private method extracted verbatim from today's loop — the
+      refactor is a <em>move</em>, not a rewrite. <code>possession</code> writes
+      <code>ctx.attackerKey</code>/<code>ctx.defenderKey</code>; <code>buildUp</code> and
+      <code>chanceCreation</code> read them. The RNG threading is untouched (CORE-02), which
+      is what makes byte-identity achievable.</p>
+
+      <h3>4.2 Structured events</h3>
+      <pre><code>// #log gains a data parameter; text stays for display
+#log(minute, type, sideKey, player, text, data = {})
+// event shape (additive — existing fields unchanged):
+{ minute, type, side, player, text,
+  data: { playerId?, ...perType } }
+
+// per-type payloads pinned in this milestone:
+goal   → { playerId, assistId|null, score: {home, away} }
+save   → { shooterId, keeperId }
+miss / block / chance → { playerId }
+corner → { }                    yellow/red/foul → { playerId }
+injury → { playerId, weeks }    sub → { onId, offId }
+tactics→ { formation, mentality }</code></pre>
+      <p>Names stay in <code>text</code>; <code>data</code> carries ids so EE-6/EE-7 (and
+      any future stats work) never parse strings. The timeline entries are already
+      structured and are untouched.</p>
+
+      <h3>4.3 Golden-master harness</h3>
+      <pre><code>test/golden/
+  fixtures.json      // header: {generated, reason, engineNote}
+                     // cases: [{name, seed, setupKind, knockout, sha256, score,
+                     //          eventCount, summary}]
+tools/update-goldens.js   // regenerates; prints old→new diff table
+test/golden-master.test.js // replays each case, hashes canonical JSON, compares</code></pre>
+      <p>Canonical serialization: <code>JSON.stringify</code> of <code>finish()</code> with
+      sorted keys. The fixture stores the hash plus human-readable summary fields so a
+      failure or regeneration diff is reviewable in the PR without decoding hashes.</p>
+
+      <h3>4.4 Statistical invariants (the permanent contract)</h3>
+      <p>~400 sims, two balanced mid-table squads, alternating venue. Bands are wide
+      enough to absorb legitimate tuning, tight enough to catch a broken engine:</p>
+      <table class="grid">
+        <thead><tr><th>Invariant</th><th>Band</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td>Goals per match (mean)</td><td>2.2 – 3.2</td><td>Real leagues: ~2.5–2.9</td></tr>
+          <tr><td>Home win / draw / away win</td><td>38–52% / 20–32% / 22–34%</td><td>Home advantage exists and is bounded</td></tr>
+          <tr><td>0-0 frequency</td><td>4 – 12%</td><td>Poisson-ish tail intact</td></tr>
+          <tr><td>Either side ≥ 5 goals</td><td>&lt; 6%</td><td>No blowout inflation (guards EE-5)</td></tr>
+          <tr><td>Shots per side (mean)</td><td>7 – 16</td><td></td></tr>
+          <tr><td>On-target share of shots</td><td>30 – 55%</td><td></td></tr>
+          <tr><td>Cards per match (mean)</td><td>1.5 – 5</td><td>Yellows ≫ reds; reds &lt; 0.3/match</td></tr>
+          <tr><td>Possession split, equal sides</td><td>50% ± 6</td><td>Symmetry check (home boost off)</td></tr>
+          <tr><td>Stronger XI (+15 ability) win rate</td><td>&gt; 52%</td><td>Quality must matter</td></tr>
+        </tbody>
+      </table>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <p><strong>None.</strong> No <code>SAVE_VERSION</code> impact. The event
+      <code>data</code> field appears only in match results, which are not persisted
+      beyond <code>lastResults</code> and are additive there.</p>
+
+      <h2>6. UI Design</h2>
+      <p>No player-facing change. The deliverable UI is developer-facing — what a golden
+      failure looks like in the terminal, specified so failures are diagnosable at a
+      glance:</p>
+      <div class="diagram">
+<pre>
+$ npm test
+✖ golden-master › seed 1189 · full-squads · league
+    hash mismatch
+    pinned:  score 2-1 · 47 events · a41f…09c2  (pinned 2026-07-12: EE-1 initial)
+    current: score 2-1 · 48 events · 77d0…e1aa
+    first divergence: minute 63 — extra event type "foul" (home)
+    → intentional change? run: npm run golden:update -- --reason "..."
+
+$ npm run golden:update -- --reason "EE-2 positional familiarity"
+  seed 1189  2-1 → 2-1   47 → 48 events   re-pinned
+  seed 2204  0-0 → 1-0   38 → 41 events   re-pinned
+  8 fixtures updated · header reason recorded
+</pre>
+      </div>
+      <p>The first-divergence line (replay both event streams, report the first differing
+      index) turns a hash mismatch into a debuggable statement — worth the small extra
+      tooling cost.</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>goldens pass post-refactor</td><td>golden</td><td>All fixtures captured pre-refactor hash-match the refactored engine (CORE-04, the milestone's core proof).</td></tr>
+          <tr><td>statistical invariants</td><td>statistical</td><td>All §5.3 bands hold over ~400 sims (CORE-05).</td></tr>
+          <tr><td>event data completeness</td><td>unit</td><td>Every event in a simulated match has a <code>data</code> object; goal events carry scorer id + running score; sub events carry both ids (CORE-03).</td></tr>
+          <tr><td>phase list is the loop</td><td>unit</td><td>Removing a phase name from <code>MINUTE_PHASES</code> (test subclass) skips exactly that behaviour — proves the pipeline is real, not decorative (CORE-01).</td></tr>
+          <tr><td>context isolation</td><td>unit</td><td>Attacker/defender chosen in <code>possession</code> is what <code>chanceCreation</code> consumed (exposed via ctx in a test hook) (CORE-08).</td></tr>
+          <tr><td>mid-match API unchanged</td><td>unit</td><td><code>makeSub</code>/<code>setTactics</code> mid-match still replay deterministically (existing tests, re-run).</td></tr>
+          <tr><td>updater is honest</td><td>unit</td><td><code>update-goldens</code> writes header reason + date; refuses to run without <code>--reason</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-1 is done when</span>
+        <ol>
+          <li>Goldens captured from pre-refactor code pass against the refactored engine.</li>
+          <li>All 148 existing tests pass unmodified; suite grows by ~15.</li>
+          <li>The statistical invariant suite exists, passes, and is documented as
+          never-casually-rebaselined.</li>
+          <li>A grep for <code>text</code>-parsing of events in <code>js/app.js</code>
+          finds nothing new — the UI keeps consuming events as before.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Refactor subtly reorders an RNG draw</td><td>Goldens catch it byte-for-byte; the first-divergence tool localises it to a minute and event.</td></tr>
+          <tr><td>Invariant bands flake (statistical noise)</td><td>Fixed seed set for the 400 sims — the suite is deterministic, bands are checked against one known sample.</td></tr>
+          <tr><td>Phase decomposition tempts behaviour "fixes"</td><td>Hard rule in scope: zero behaviour change; any bug found is filed, not fixed, this session.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../../11-engine-evolution.html">← Track roadmap</a> · <a href="../m2-positions-formations/index.html">Next: EE-2 · Positions →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-1 · Extensible Core</footer>
+</body>
+</html>

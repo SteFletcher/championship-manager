@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-6 · Player-Level Action Stream — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-6</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="../m5-ball-model/index.html">EE-5 · Ball Model</a>
+      <a href="index.html" class="active">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../04-engine-specs.html">04 · Engine Specs</a>
+      <a href="../../03-data-model.html">03 · Data Model</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-6 · Player-Level Action Stream</h1>
+      <p class="subtitle">Every tick resolves into named actions — who passed to whom, who tackled, who ran — and the match record becomes a complete, replayable story</p>
+
+      <h2>1. Purpose</h2>
+      <p>EE-5 gave the match a ball; this milestone gives it <em>protagonists</em>. Each
+      possession tick resolves into one or two concrete actions with a named actor,
+      optional target, zone, and outcome. The stat lines (passes, tackles) stop being
+      parallel bookkeeping and become sums over actions that actually happened. Commentary
+      derives from the stream. After this milestone the engine produces everything a
+      watchable match needs — EE-7 only has to draw it.</p>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Action vocabulary + resolver; actor/target selection from position,
+            attributes, instructions; stat lines derived from actions; off-ball run
+            actions for viewer choreography; commentary re-templated over actions;
+            action log in match result.</td>
+            <td>Any change to <em>aggregate</em> probabilities (shots, goals, turnovers
+            keep EE-5's calibrated rates — actions decorate the tick outcome, they don't
+            re-decide it); lateral channels; dueling animations; per-action xG; action-
+            level ratings overhaul (rating deltas keep existing coefficients, now
+            triggered per action).</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: pass/tackle/shot/turnover actions with derived stats
+      ship first; off-ball runs and enriched commentary templates are the tail and can
+      roll over without schema change.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>ACT-01</td><td>Action vocabulary: <code>pass, throughBall, dribble, cross, tackle, interception, clearance, shot, save, block, claim, run</code>. Each logged as <code>{minute, tick, type, side, actorId, targetId?, zone, outcome}</code> in an ordered action log.</td><td>Must</td></tr>
+          <tr><td>ACT-02</td><td>The tick outcome decided by EE-5 (advance/hold/turnover/chance) is <em>narrated</em> by actions, never re-decided: e.g. turnover → a defender's <code>tackle</code> (success) or a misplaced <code>pass</code> + <code>interception</code>, chosen by a single decorated roll.</td><td>Must</td></tr>
+          <tr><td>ACT-03</td><td>Actor selection: possession actions weight by position-zone plausibility (defenders start moves in D, midfielders in M, forwards in A — matrix in §4.2), familiarity, and instructions (forward-runners appear upfield more). Receiver ≠ passer, weighted toward the advance direction.</td><td>Must</td></tr>
+          <tr><td>ACT-04</td><td>Action outcome quality consults the specific attribute (pass → passing, dribble → pace, tackle → tackling, cross → passing/pace blend, shot chain unchanged from EE-3 wiring).</td><td>Must</td></tr>
+          <tr><td>ACT-05</td><td>Stat lines (passes, tackles, shots, saves…) are computed <em>only</em> from the action log — the old parallel counters are deleted; totals stay within today's realistic volumes (passes 250–500/side, tackles 10–30/side).</td><td>Must</td></tr>
+          <tr><td>ACT-06</td><td>Off-ball <code>run</code> actions (forward-runners during owned attacking-third ticks) exist for viewer choreography; zero probability impact this milestone; capped at 1/tick.</td><td>Must</td></tr>
+          <tr><td>ACT-07</td><td>Commentary is generated from actions via the existing template mechanism, upgraded to name both actors ("Reid slides in on Okafor", "Hurst → Vance, through ball!"); the events feed (goals, cards…) is unchanged in shape.</td><td>Must</td></tr>
+          <tr><td>ACT-08</td><td>Action log lives on the match result (<code>result.actions</code>), is not persisted to localStorage, and is bounded (~8–12 actions/minute ≈ ≤ 1,200/match).</td><td>Must</td></tr>
+          <tr><td>ACT-09</td><td>Live ratings react per action with the existing coefficient table (RATING); a match's rating spread stays within current norms (mean ≈ 6.6–7.0, no systematic inflation).</td><td>Must</td></tr>
+          <tr><td>ACT-10</td><td>Invariants hold; goldens re-pinned once ("EE-6 action narration"). Determinism: identical seed → identical action log.</td><td>Must</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 Decoration, not decision</h3>
+      <div class="diagram">
+<pre>
+EE-5 tick outcome          EE-6 narration (one decorated roll each)
+─────────────────          ──────────────────────────────────────────
+advance                 →  pass(actor→receiver, fwd) | throughBall | dribble | cross(from wide MR/ML)
+hold                    →  pass(lateral/back) — completion from passing attr
+turnover                →  tackle(defender) | pass(actor, outcome:astray)+interception(defender) | clearance(in D)
+chance → resolveChance  →  shot chain as today, logged as shot/save/block/goal actions
+</pre>
+      </div>
+      <p>The aggregate rates stay EE-5's; the decorated roll only chooses <em>which
+      flavour</em> of the already-decided outcome occurred and <em>who</em> did it. This is
+      the design's load-bearing idea: EE-6 cannot unbalance the sim, because it never
+      touches the probabilities that balance it.</p>
+
+      <h3>4.2 Actor plausibility matrix (possession side)</h3>
+      <table class="grid">
+        <thead><tr><th>Zone</th><th>DF weight</th><th>MF weight</th><th>FW weight</th></tr></thead>
+        <tbody>
+          <tr><td>Own D</td><td>3.0 (+GK claim/clearance)</td><td>1.5</td><td>0.2</td></tr>
+          <tr><td>M</td><td>1.0</td><td>3.0</td><td>1.0</td></tr>
+          <tr><td>Opp A</td><td>0.3 (+forward-runners 1.0)</td><td>2.0</td><td>3.0</td></tr>
+        </tbody>
+      </table>
+      <p>Within a unit, weight × familiarity × sharpness as in <code>#pick</code> today.
+      Defending-side actors (tackle/interception) mirror the matrix. The forward-runner
+      bonus is EE-4's instruction surfacing in the narration — a marauding full-back now
+      visibly appears in the final third.</p>
+
+      <h3>4.3 Stat derivation replaces bookkeeping</h3>
+      <pre><code>// The tick build-up loop (#tickBuildUp) is deleted. Stat lines become:
+onAction(a) {
+  line(a.actorId).count(a.type, a.outcome);   // passes/tackles/shots/saves…
+  rate(a);                                     // existing RATING coefficients
+}
+// finish(): line totals now provably equal action-log sums (ACT-05 test)</code></pre>
+      <p>Volume calibration: 3 ticks/min × ~2.6 avg actions/tick ≈ 700 actions; passes
+      land in the 250–450/side band. A constant <code>ACTIONS_PER_TICK</code> table keeps
+      this tunable in one place.</p>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <p><strong>No SAVE_VERSION bump.</strong> <code>result.actions</code> is additive and
+      unpersisted. Player stat-line shape is unchanged (same keys, new derivation).
+      One compatibility note: <code>result.events</code> (goals, cards, commentary
+      moments) keeps its exact shape — the UI feed and news generation read on
+      untouched.</p>
+
+      <h2>6. UI Design</h2>
+      <p>This milestone's UI is deliberately thin — the payoff screen is EE-7. The live
+      feed simply gets the better sentences, and the post-match player stats gain hover
+      detail:</p>
+      <div class="diagram">
+<pre>
+LIVE MATCH — commentary now names protagonists (ACT-07)
+┌──────────────────────────────────────────────────────────────────┐
+│  71' Okonkwo skips past Ward down the right                      │
+│  71' Okonkwo → Hurst, cut back...                                │
+│  72' HURST! Buried! 2-1!                                         │
+│  ── earlier ──                                                   │
+│  68' Reid slides in on Okafor — clean as a whistle               │
+└──────────────────────────────────────────────────────────────────┘
+
+POST-MATCH — player row hover/tap shows action detail
+┌──────────────────────────────────────────────────────────────────┐
+│ J. Okonkwo  MR  7.8 ★ │ 38 passes (82%) · 4 dribbles · 2 crosses │
+│                       │ 1 assist · 3 tackles · 1 run led to goal │
+└──────────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>narration is faithful</td><td>unit</td><td>Every EE-5 tick outcome maps to ≥1 action; turnover ticks always end with a defending-side action; chance ticks contain a shot-chain.</td></tr>
+          <tr><td>stats = action sums</td><td>unit</td><td>For any seed, <code>finish()</code> stat lines exactly equal action-log aggregation (ACT-05 — the milestone's core proof).</td></tr>
+          <tr><td>volumes realistic</td><td>statistical</td><td>Passes 250–450/side, tackles 10–30, actions ≤ 1,200/match over ~200 sims.</td></tr>
+          <tr><td>plausibility matrix</td><td>statistical</td><td>Defenders dominate own-D actions; forwards dominate opp-A; forward-running full-back's final-third actions ≥ 2× hold twin's.</td></tr>
+          <tr><td>attribute-true outcomes</td><td>statistical</td><td>High-passing XI completes measurably more; high-tackling side wins more turnover-by-tackle vs interception.</td></tr>
+          <tr><td>ratings stable</td><td>statistical</td><td>Match mean rating within 6.4–7.1; no position systematically &gt; +0.5 vs today's baselines.</td></tr>
+          <tr><td>determinism</td><td>determinism</td><td>Same seed → byte-identical action log; goldens re-pinned once.</td></tr>
+          <tr><td>invariants hold</td><td>statistical</td><td>All EE-1 bands green (should be trivially true by design — asserting it proves ACT-02).</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-6 is done when</span>
+        <ol>
+          <li>A match result contains a complete, deterministic action log from which
+          every stat line is derived — verified by the equality test.</li>
+          <li>Commentary names passer and receiver, tackler and victim.</li>
+          <li>Aggregate match statistics are indistinguishable from EE-5's (invariants +
+          volume bands).</li>
+          <li>An EE-7 prototype question — "could a viewer replay this log?" — answers
+          yes on inspection: every action has actor, zone, and outcome.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Action layer accidentally shifts balance</td><td>Decoration principle (§4.1): outcomes are decided before actions exist; invariants assert it.</td></tr>
+          <tr><td>RNG draw inflation slows season sims</td><td>One decorated roll + one actor pick per tick (~6 draws/min added); benchmark test: full season sim &lt; 1.5× current wall time.</td></tr>
+          <tr><td>Commentary repetition at 700 actions</td><td>Feed shows key actions only (existing event types + sampled build-up); the full log is for stats/viewer, not prose.</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m5-ball-model/index.html">← EE-5 · Ball Model</a> · <a href="../m7-match-viewer/index.html">Next: EE-7 · Match Viewer →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-6 · Player-Level Action Stream</footer>
+</body>
+</html>

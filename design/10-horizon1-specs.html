@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10 · Horizon 1 Specs — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 10 · Horizon 1 Specs</span>
+    <span class="spacer"></span>
+    <span class="meta">Forward · v0.2</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+          <a href="05b-table-layouts.html">05b · Table Layouts</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+      <a href="10-horizon1-specs.html" class="active">10 · Horizon 1 Specs</a>
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a>
+    </nav>
+
+    <article class="doc">
+      <h1>10 · Horizon 1 Feature Specifications</h1>
+      <p class="subtitle">Full designs for the three near-term roadmap items: assistant takes charge, league statistics, and player interaction</p>
+
+      <h2>1. Purpose &amp; Scope</h2>
+      <p>The <a href="09-roadmap.html">Roadmap</a> names three near-term (Horizon&nbsp;1)
+      features. This document takes each from a one-paragraph pitch to a buildable
+      specification: requirements, engine design, data-model deltas, UI design, and test
+      plan. Unlike documents 01–08, which describe what <em>is</em>, this document — like
+      the roadmap — describes what comes <em>next</em>.</p>
+      <table class="grid">
+        <thead><tr><th>ID prefix</th><th>Feature</th><th>Roadmap effort</th><th>Spec</th></tr></thead>
+        <tbody>
+          <tr><td><code>AST</code></td><td>Assistant takes charge / holiday weeks</td><td>Low–Medium</td><td><a href="#f1">§2</a></td></tr>
+          <tr><td><code>STA</code></td><td>League statistics pages</td><td>Low</td><td><a href="#f2">§3</a></td></tr>
+          <tr><td><code>INT</code></td><td>Player interaction &amp; morale events</td><td>Medium</td><td><a href="#f3">§4</a></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <span class="label">Design rules inherited from the roadmap</span>
+        <p><strong>Engine first</strong> — every mechanic lands in <code>src/engine/</code>
+        with tests before its UI. <strong>Determinism</strong> — all randomness flows
+        through <code>this.rng</code>; a delegated week or a squad talk must replay
+        identically from the same seed. <strong>One save bump</strong> — the two features
+        that persist new state (STA, INT) share a single <code>SAVE_VERSION 6 → 7</code>
+        migration (<a href="#migration">§5.1</a>).</p>
+      </div>
+
+      <h2 id="f1">2. Feature AST — Assistant Takes Charge</h2>
+      <p>Let the player resolve a match week — or several — without watching the match.
+      The assistant picks the strongest available XI, uses the manager's saved tactics,
+      and files a report in the inbox.</p>
+
+      <h3>2.1 Requirements</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>AST-01</td><td>The pre-match screen offers an <strong>Assistant takes charge</strong> action that resolves the user's fixture without entering the live match screen.</td><td>Must</td></tr>
+          <tr><td>AST-02</td><td>A delegated match uses the manager's saved formation and mentality (from <code>game.tactics</code>) with the strongest available XI auto-picked by <code>selectXI</code> — never the generic AI <code>4-4-2 / normal</code>.</td><td>Must</td></tr>
+          <tr><td>AST-03</td><td>A <strong>Holiday</strong> action advances up to N weeks (N ∈ {2, 4, "to season end"}), delegating any user fixtures, and stops early when: the manager is sacked, the season ends, an incoming transfer offer arrives, or a poach offer from a bigger club arrives.</td><td>Must</td></tr>
+          <tr><td>AST-04</td><td>Every delegated match produces an <em>Assistant's report</em> news item: score, scorers, and a one-line verdict.</td><td>Must</td></tr>
+          <tr><td>AST-05</td><td>Delegation is deterministic: the same save + seed + delegation choices replays the identical career. No extra RNG draws compared to the existing auto-sim path.</td><td>Must</td></tr>
+          <tr><td>AST-06</td><td>Weekly upkeep (contracts, injuries healing, board, transfers, expansions, scouts) runs unchanged during delegated weeks — holiday skips <em>watching</em>, never <em>simulating</em>.</td><td>Must</td></tr>
+          <tr><td>AST-07</td><td>The week summary screen visually distinguishes a delegated user result (assistant icon/tag) from a live-played one.</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h3>2.2 Engine Design</h3>
+      <p>The machinery mostly exists: <code>advanceWeek(null)</code> already auto-simulates
+      the user's fixture via <code>#resultFor → simulateMatch(aiSetup(home), aiSetup(away))</code>
+      (<code>game.js:281</code>). Two gaps remain, and they define the work:</p>
+      <ol>
+        <li><strong><code>aiSetup</code> ignores the user's tactics.</strong>
+        <code>aiSetup()</code> (<code>game.js:195</code>) hard-codes
+        <code>formation: '4-4-2', mentality: 'normal'</code> for every club, including the
+        user's. Fix: when <code>clubName === this.clubName</code>, read
+        <code>this.tactics.formation</code> and <code>this.tactics.mentality</code>. The
+        full-squad setup shape is kept so <code>selectXI</code> handles injuries and bans
+        automatically (AST-02). This also quietly improves the existing sacked/no-show
+        sim paths.</li>
+        <li><strong>The UI never offers the path.</strong> <code>onContinue()</code>
+        (<code>app.js:707</code>) forces <code>showPreMatch(fixture)</code> whenever a user
+        fixture exists. The engine needs no new simulation code — only a thin API for the
+        UI to call.</li>
+      </ol>
+      <pre><code>// game.js — new public API
+delegateWeek()
+  // advanceWeek(null) + files the Assistant's report news item
+  // for the user fixture (if any). Returns lastResults.
+
+holiday({ weeks })            // weeks: number | 'season'
+  // loop: delegateWeek(); stop when
+  //   sacked || seasonEnded || pendingOffers grew || jobOffers grew || weeks done
+  // Returns { weeksAdvanced, stoppedBy }  // 'done'|'sacked'|'offer'|'poach'|'seasonEnd'</code></pre>
+      <div class="callout blue">
+        <span class="label">Determinism note (AST-05)</span>
+        <p>The delegated path is byte-for-byte the existing auto-sim path — one
+        <code>rng.int</code> seed draw per match, in fixture order. Changing
+        <code>aiSetup</code> to read saved tactics changes no RNG call: formation and
+        mentality only alter <em>how</em> the drawn seed's match plays out inside
+        <code>simulateMatch</code>, which owns its own child RNG. The news item is written
+        after simulation and draws nothing.</p>
+      </div>
+
+      <h3>2.3 Data Model Changes</h3>
+      <p>None persisted. <code>holiday()</code> runs synchronously to its stop condition, so
+      no "on holiday" flag needs to survive a save/load. No <code>SAVE_VERSION</code> impact.</p>
+
+      <h3>2.4 UI Design</h3>
+      <p>Two entry points: the pre-match screen (single match) and the hub Continue area
+      (multi-week).</p>
+      <div class="diagram">
+<pre>
+PRE-MATCH (delegation added to the action row)
+┌──────────────────────────────────────────────────────────────┐
+│  Week 14 · League · vs Milton Rovers (H)      Gate ~7,400    │
+│                                                              │
+│  [ formation pitch + lineup panels as today ]                │
+│                                                              │
+│  ┌────────────────┐  ┌───────────────────────────┐           │
+│  │ ▶ PLAY MATCH   │  │ 🧑‍💼 ASSISTANT TAKES CHARGE │           │
+│  └────────────────┘  └───────────────────────────┘           │
+└──────────────────────────────────────────────────────────────┘
+
+HUB SIDEBAR (Continue gains a holiday flyout)
+┌──────────────────┐        ┌─────────────────────────┐
+│  CONTINUE      ▸ │  ───▶  │ Play this week          │
+└──────────────────┘        │ Holiday 2 weeks         │
+                            │ Holiday 4 weeks         │
+                            │ Holiday to season end   │
+                            └─────────────────────────┘
+
+INBOX — Assistant's report (AST-04)
+┌──────────────────────────────────────────────────────────────┐
+│ 🧑‍💼 Assistant's report                              Week 14  │
+│ We beat Milton Rovers 2–1 (Hurst 34', 61'). A solid          │
+│ afternoon's work — the 4-4-2 held firm after the break.      │
+└──────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <p>When <code>holiday()</code> returns, the UI lands on the week summary for the last
+      simulated week and shows the stop reason as a banner ("Holiday interrupted: transfer
+      offer received for J. Hurst"). Delegated user results in the week summary carry a
+      <code>🧑‍💼</code> tag (AST-07).</p>
+
+      <h3>2.5 Test Plan</h3>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>delegated week records a user result</td><td>unit</td><td><code>delegateWeek()</code> with a user fixture pushes the fixture into <code>results</code> and the table updates.</td></tr>
+          <tr><td>assistant respects saved tactics</td><td>statistical</td><td>Over ~200 delegated sims, a squad set to <code>attacking 4-3-3</code> scores measurably more (and concedes more) than the same squad set to <code>defensive 5-3-2</code>.</td></tr>
+          <tr><td>delegation replays identically</td><td>determinism</td><td>Two games from the same seed making identical <code>delegateWeek/holiday</code> calls produce deep-equal state.</td></tr>
+          <tr><td>holiday stops on incoming offer</td><td>unit</td><td>Force an AI offer mid-holiday; <code>stoppedBy === 'offer'</code> and the week count is short of N.</td></tr>
+          <tr><td>holiday stops on sacking / season end</td><td>unit</td><td>A doomed club's holiday ends with <code>stoppedBy === 'sacked'</code>; a full-length holiday ends at <code>seasonEnd</code> having run <code>#endSeason</code> once.</td></tr>
+          <tr><td>upkeep still runs</td><td>unit</td><td>Injured player's <code>injuryWeeks</code> decrements across delegated weeks (AST-06).</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="f2">3. Feature STA — League Statistics Pages</h2>
+      <p>A dedicated Stats screen with league-wide leaderboards: goals, assists, average
+      rating, discipline, and clean sheets — per division. The roadmap calls this "pure
+      UI"; in truth the aggregation needs two small engine additions first (discipline and
+      clean sheets are not yet accumulated).</p>
+
+      <h3>3.1 Requirements</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>STA-01</td><td>A new <strong>Stats</strong> hub screen shows five leaderboards as tabs: Goals, Assists, Average Rating, Discipline, Clean Sheets.</td><td>Must</td></tr>
+          <tr><td>STA-02</td><td>Each board filters by division (Div 1 / Div 2), defaulting to the user's division, and shows the top 20.</td><td>Must</td></tr>
+          <tr><td>STA-03</td><td><code>seasonStats</code> additionally accumulates <code>yellows</code>, <code>reds</code>, and <code>cleanSheets</code> per player (the per-match lines already carry cards; clean sheets are derivable at result time).</td><td>Must</td></tr>
+          <tr><td>STA-04</td><td>Average Rating requires a minimum of 6 appearances to qualify (prevents a one-match 9.0 topping the board).</td><td>Must</td></tr>
+          <tr><td>STA-05</td><td>A clean sheet is credited to every natural-GK player with <code>minutes &gt; 0</code> on a side that conceded 0 in that match.</td><td>Must</td></tr>
+          <tr><td>STA-06</td><td>Discipline ranks by <code>reds desc, yellows desc</code>; the board shows both columns.</td><td>Must</td></tr>
+          <tr><td>STA-07</td><td>Rows for the user's club are highlighted, matching the league-table convention (<a href="05b-table-layouts.html">05b</a>).</td><td>Should</td></tr>
+          <tr><td>STA-08</td><td>Players who left the league mid-season (sold to a club, still in-world) keep their stats; ids that no longer resolve to any club are skipped without error.</td><td>Should</td></tr>
+          <tr><td>STA-09</td><td>Boards reset with <code>seasonStats</code> at season end (existing behaviour); the season-review news keeps its golden-boot line.</td><td>Must</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.2 Engine Design</h3>
+      <p><code>seasonStats</code> (<code>game.js:371</code>) is a flat map
+      <code>playerId → {apps, goals, assists, ratingSum, ratingN, motm}</code> populated in
+      <code>#applyMatchResult</code> for <em>every</em> club, not just the user's — so the
+      league-wide data pipeline already exists. Three additions:</p>
+      <ol>
+        <li><strong>Accumulate cards.</strong> In the per-line loop:
+        <code>stats.yellows += line.yellow; stats.reds += line.red;</code> (the
+        <code>MatchResult</code> lines already carry both — <code>match.js:124</code>).</li>
+        <li><strong>Accumulate clean sheets.</strong> Once per side per match: if
+        <code>conceded === 0</code>, credit each appearing natural-GK per STA-05.
+        <code>#applyMatchResult</code> already has <code>conceded</code> in scope.</li>
+        <li><strong>A selector so the UI stays dumb.</strong>
+        <pre><code>// game.js — new public API
+leagueLeaders({ metric, division, limit = 20 })
+  // metric: 'goals'|'assists'|'rating'|'discipline'|'cleanSheets'
+  // → [{ id, name, pos, club, division, apps, value, value2? }]
+  //   value2 = yellows on the discipline board
+  // Resolves ids by scanning club rosters; skips unresolvable ids (STA-08);
+  // applies the 6-app floor for 'rating' (STA-04). Pure read — no RNG.</code></pre></li>
+      </ol>
+
+      <h3>3.3 Data Model &amp; Save Changes</h3>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Where</th><th>Type</th><th>Migration default</th></tr></thead>
+        <tbody>
+          <tr><td><code>yellows</code></td><td><code>seasonStats[id]</code></td><td>int ≥ 0</td><td>0</td></tr>
+          <tr><td><code>reds</code></td><td><code>seasonStats[id]</code></td><td>int ≥ 0</td><td>0</td></tr>
+          <tr><td><code>cleanSheets</code></td><td><code>seasonStats[id]</code></td><td>int ≥ 0</td><td>0</td></tr>
+        </tbody>
+      </table>
+      <p>Part of the shared <code>SAVE_VERSION 7</code> bump (<a href="#migration">§5.1</a>).
+      Mid-season v6 loads get zeros — boards start counting from the load point, which the
+      migration note in the inbox should say once.</p>
+
+      <h3>3.4 UI Design</h3>
+      <p>New sidebar nav button <strong>Stats</strong>, placed after <strong>Table</strong>.
+      One screen, tab strip on top, division toggle right-aligned:</p>
+      <div class="diagram">
+<pre>
+STATS
+┌──────────────────────────────────────────────────────────────┐
+│  League statistics                        [ Div 1 ] [ Div 2 ]│
+│  ┌───────┬─────────┬────────┬────────────┬──────────────┐    │
+│  │ GOALS │ ASSISTS │ RATING │ DISCIPLINE │ CLEAN SHEETS │    │
+│  └───────┴─────────┴────────┴────────────┴──────────────┘    │
+│  #  PLAYER          CLUB             POS  APPS  GLS          │
+│  1  J. Hurst        Kettleworth Utd  FW    14    12  ◀ user  │
+│  2  D. Okafor       Milton Rovers    FW    13    11          │
+│  3  S. McAllister   Brackenford      MF    14     9          │
+│  …                                                           │
+│  20 R. Vance        Aldbury Town     FW    12     4          │
+└──────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <p>Column spec, following the <a href="05b-table-layouts.html">05b</a> conventions
+      (rank + name left-aligned, numerics right-aligned, user-club rows
+      <code>.highlight</code>):</p>
+      <table class="grid">
+        <thead><tr><th>Board</th><th>Metric columns</th><th>Sort</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Goals</td><td>GLS</td><td>goals desc, apps asc</td><td>fewest apps breaks ties (better strike rate first)</td></tr>
+          <tr><td>Assists</td><td>AST</td><td>assists desc, apps asc</td><td></td></tr>
+          <tr><td>Rating</td><td>AVR (1 d.p.)</td><td>avg desc</td><td>≥ 6 apps only; footer notes the floor</td></tr>
+          <tr><td>Discipline</td><td>YEL · RED</td><td>reds desc, yellows desc</td><td>gold yellow count, red red count</td></tr>
+          <tr><td>Clean Sheets</td><td>CS</td><td>cleanSheets desc, apps asc</td><td>GK only by construction</td></tr>
+        </tbody>
+      </table>
+
+      <h3>3.5 Test Plan</h3>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>cards accumulate</td><td>unit</td><td>A simulated round's <code>seasonStats</code> yellows/reds equal the sum of the match lines.</td></tr>
+          <tr><td>clean sheet credited</td><td>unit</td><td>Force a 1–0 result: winning side's appearing GK gains <code>cleanSheets</code>; losing side's GK does not; a 0–0 credits both.</td></tr>
+          <tr><td>leaders sort &amp; filter</td><td>unit</td><td><code>leagueLeaders</code> returns ≤ limit rows, only from the requested division, sorted per board spec.</td></tr>
+          <tr><td>rating floor</td><td>unit</td><td>A 1-app player with rating 9.0 is absent from the rating board until app 6.</td></tr>
+          <tr><td>departed id skipped</td><td>unit</td><td>Delete a player with stats from all rosters; <code>leagueLeaders</code> omits the id without throwing (STA-08).</td></tr>
+          <tr><td>v6 save migrates</td><td>unit</td><td>Loading a v6 payload yields zeroed new fields and <code>version === 7</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="f3">4. Feature INT — Player Interaction &amp; Morale Events</h2>
+      <p>Give morale inputs and consequences. Today it is nearly inert: results move it
+      (+8 W / +1 D / −6 L), listing (−10) and renewing (+8) nudge it, and its only output
+      is a ±3% sharpness factor in the match engine
+      (<code>match.js:237</code>: <code>(morale − 70) × 0.001</code>). This feature adds
+      manager-driven talks, morale-driven events, and enough match-engine weight that the
+      loop is worth playing.</p>
+
+      <h3>4.1 Requirements</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>INT-01</td><td>Three per-player talks from the Squad screen: <strong>Praise</strong>, <strong>Warn</strong>, <strong>Fine</strong>. Each returns a visible reaction (news-style line).</td><td>Must</td></tr>
+          <tr><td>INT-02</td><td>One talk per player per 3 weeks (<code>TALK_COOLDOWN_WEEKS = 3</code>); buttons disable with a tooltip during cooldown.</td><td>Must</td></tr>
+          <tr><td>INT-03</td><td>Praise devalues when hollow: half effect if morale ≥ 85, or if the player was already praised within the last 6 weeks.</td><td>Must</td></tr>
+          <tr><td>INT-04</td><td>Fines are justified only after a red card, a five-booking suspension, or a last-match rating &lt; 6.0. An unjustified fine backfires (morale −12, "dressing-room leak" news). A fine credits one week's wage to the club balance.</td><td>Must</td></tr>
+          <tr><td>INT-05</td><td>Warning an out-of-form player is a gamble resolved via <code>this.rng</code>: 60% respond (form +0.4, morale −2), 40% sulk (morale −8).</td><td>Must</td></tr>
+          <tr><td>INT-06</td><td>Weekly morale events: a player with morale &lt; 40 for 3 consecutive weeks submits a <strong>transfer request</strong> (news + <code>wantsAway</code> flag, fires once until resolved).</td><td>Must</td></tr>
+          <tr><td>INT-07</td><td>Responding to a transfer request: transfer-listing the player restores +8 morale (he sees a way out); refusing (dismiss) costs −6 and he stays <code>wantsAway</code>. Selling or a morale recovery ≥ 60 clears the flag.</td><td>Must</td></tr>
+          <tr><td>INT-08</td><td><code>wantsAway</code> players are preferred targets in <code>#maybeAiOfferForUserPlayer</code> (offer chance ×2) and accept for-sale moves readily.</td><td>Should</td></tr>
+          <tr><td>INT-09</td><td>Playing-time unhappiness: from week 10, a player in the squad's top 8 by ability with 0 apps in the last 5 matchdays loses 2 morale/week ("wants first-team football" news, at most once a month).</td><td>Should</td></tr>
+          <tr><td>INT-10</td><td>Morale weight in the match engine doubles: sharpness term <code>(morale − 70) × 0.002</code> (a ±5.8% swing), tuned to be measurable but smaller than form's ±8%.</td><td>Must</td></tr>
+          <tr><td>INT-11</td><td>All talk outcomes and event rolls draw from <code>this.rng</code> in a fixed order; replays are identical.</td><td>Must</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 Engine Design</h3>
+      <p>New public API on <code>Game</code>, following the
+      <code>toggleTransferList/renewContract</code> pattern (mutate + clamp + news +
+      return):</p>
+      <pre><code>praisePlayer(id)  // → { ok, reaction }   morale +6 (half per INT-03), sets lastPraiseWeek
+warnPlayer(id)    // → { ok, reaction }   INT-05 gamble; requires form &lt; 6.0
+finePlayer(id)    // → { ok, reaction }   INT-04; justified: morale −5, wage → balance
+                  //                      unjustified: morale −12 + leak news
+// all three: reject (ok:false) during cooldown; set lastTalkWeek = this.week</code></pre>
+      <p>Weekly events run as a new <code>#moraleEvents()</code> step inside
+      <code>advanceWeek</code>, after <code>#weeklyUpkeep()</code> and before the AI
+      transfer step (so a fresh transfer request can influence the same week's AI bids,
+      INT-08). Iteration is roster order over the user's club only — AI squads keep the
+      cheap result-driven morale model.</p>
+      <div class="diagram">
+<pre>
+#moraleEvents()  — user club, each player in roster order
+  morale &lt; 40 ?  unhappyWeeks++            : unhappyWeeks = 0
+  unhappyWeeks ≥ 3 &amp;&amp; !wantsAway ?
+      wantsAway = true
+      news("Transfer request", "…hands in a written request…")
+  wantsAway &amp;&amp; (sold || morale ≥ 60) ?  wantsAway = false
+  week ≥ 10 &amp;&amp; topEightAbility &amp;&amp; appsInLast5 == 0 ?
+      morale −2 ; monthly-capped "wants first-team football" news
+</pre>
+      </div>
+      <div class="callout gold">
+        <span class="label">Tuning target (INT-10)</span>
+        <p>Loss weeks cost −6 morale, so a relegation-battle squad trends toward the 20
+        floor. The talk economy must be a real counterweight: praising ~5 players a week
+        (+6 each, cooldown-limited) roughly offsets one loss across the squad. The
+        statistical test below pins the sharpness effect so tuning changes that break the
+        counterweight fail CI rather than silently flattening the feature.</p>
+      </div>
+
+      <h3>4.3 Data Model &amp; Save Changes</h3>
+      <table class="grid">
+        <thead><tr><th>Field</th><th>Where</th><th>Type</th><th>Migration default</th></tr></thead>
+        <tbody>
+          <tr><td><code>lastTalkWeek</code></td><td>player</td><td>int | null</td><td><code>null</code></td></tr>
+          <tr><td><code>lastPraiseWeek</code></td><td>player</td><td>int | null</td><td><code>null</code></td></tr>
+          <tr><td><code>unhappyWeeks</code></td><td>player</td><td>int ≥ 0</td><td>0</td></tr>
+          <tr><td><code>wantsAway</code></td><td>player</td><td>bool</td><td><code>false</code></td></tr>
+        </tbody>
+      </table>
+      <p>Week counters reset at season end alongside the existing per-season player state.
+      Part of the shared <code>SAVE_VERSION 7</code> bump (<a href="#migration">§5.1</a>).</p>
+
+      <h3>4.4 UI Design</h3>
+      <p>The Squad screen's existing per-row actions (List / Renew) gain a
+      <strong>Talk</strong> action that expands an inline panel — same interaction pattern,
+      no modal:</p>
+      <div class="diagram">
+<pre>
+SQUAD — row expanded after clicking TALK
+┌──────────────────────────────────────────────────────────────────────┐
+│ J. Hurst   FW  27  ability…  form 5.4  morale 38 ▼   [TALK][LIST][RENEW]
+│ ┌──────────────────────────────────────────────────────────────────┐ │
+│ │  Talk to J. Hurst                                                │ │
+│ │  [ 👏 PRAISE ]   [ ⚠ WARN ]   [ 💸 FINE (1 wk wage) ]            │ │
+│ │  Warn available: form below 6.0.  Fine not justified — greyed.   │ │
+│ │  ────────────────────────────────────────────────────────────    │ │
+│ │  » "The gaffer's words stung. Hurst trains like a man possessed."│ │
+│ └──────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+
+INBOX — transfer request (actionable, pending-offers pattern)
+┌──────────────────────────────────────────────────────────────────────┐
+│ 📄 Transfer request                                          Week 18 │
+│ J. Hurst has handed in a written transfer request. Morale in the     │
+│ dressing room is fragile.                                            │
+│              [ TRANSFER-LIST HIM ]   [ REFUSE THE REQUEST ]          │
+└──────────────────────────────────────────────────────────────────────┘
+</pre>
+      </div>
+      <ul>
+        <li>Morale cell gains a trend arrow (▲/▼ vs 3 weeks ago) and turns red below 40 —
+        the screen should telegraph who needs a talk before the request lands.</li>
+        <li>Disabled talk buttons carry a title tooltip: "Spoke to him 2 weeks ago",
+        "No grounds to fine".</li>
+        <li>The transfer-request news item is actionable inline, reusing the
+        pending-offers accept/reject button pattern; the inbox badge counts it.</li>
+      </ul>
+
+      <h3>4.5 Test Plan</h3>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>praise raises &amp; clamps</td><td>unit</td><td>+6 normally, +3 when morale ≥ 85 or re-praised inside 6 weeks; never exceeds 99.</td></tr>
+          <tr><td>cooldown enforced</td><td>unit</td><td>Second talk inside 3 weeks returns <code>ok:false</code> and changes nothing.</td></tr>
+          <tr><td>warn is a seeded gamble</td><td>determinism</td><td>Same seed → same respond/sulk outcome; over 500 seeds the respond rate is 60% ± 5.</td></tr>
+          <tr><td>fine justification</td><td>unit</td><td>Justified fine: morale −5 and balance += wage. Unjustified: −12 + leak news, no balance change.</td></tr>
+          <tr><td>transfer request fires once</td><td>unit</td><td>Hold morale &lt; 40 for 3 weeks → one request; further weeks add no duplicates; listing him applies +8 and keeps <code>wantsAway</code> until morale ≥ 60.</td></tr>
+          <tr><td>wantsAway attracts bids</td><td>statistical</td><td>Over many sim-weeks, offer frequency for a <code>wantsAway</code> player ≈ 2× the baseline (INT-08).</td></tr>
+          <tr><td>morale moves matches</td><td>statistical</td><td>Identical squads at morale 95 vs 30 over ~400 sims: high-morale side wins measurably more (pins INT-10's coefficient).</td></tr>
+          <tr><td>playing-time decay</td><td>unit</td><td>Top-8-ability player unused for 5 matchdays after week 10 loses 2/week; a rotation player does not (INT-09).</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="cross">5. Cross-Cutting Concerns</h2>
+
+      <h3 id="migration">5.1 Save Migration — <code>SAVE_VERSION 6 → 7</code></h3>
+      <p>STA and INT both persist new fields; they ship under a single version bump to
+      avoid a v7-then-v8 churn. The migration is additive-only:</p>
+      <table class="grid">
+        <thead><tr><th>Payload area</th><th>Change</th><th>v6 → v7 default</th></tr></thead>
+        <tbody>
+          <tr><td><code>seasonStats[*]</code></td><td>+ <code>yellows, reds, cleanSheets</code></td><td>0, 0, 0</td></tr>
+          <tr><td><code>clubs[*].players[*]</code></td><td>+ <code>lastTalkWeek, lastPraiseWeek, unhappyWeeks, wantsAway</code></td><td>null, null, 0, false</td></tr>
+        </tbody>
+      </table>
+      <p>Loading a v6 save fills defaults and stamps <code>version = 7</code>; a one-time
+      inbox note explains that card/clean-sheet counts start from the load point. No field
+      is removed or reinterpreted, so v7 code never mis-reads v6 data.</p>
+
+      <h3>5.2 Determinism Checklist</h3>
+      <ul>
+        <li>AST adds <strong>zero</strong> RNG draws — it reuses the existing auto-sim path.</li>
+        <li>STA is pure aggregation and pure reads — <strong>zero</strong> draws.</li>
+        <li>INT draws only in <code>warnPlayer</code> (one <code>chance()</code>) and
+        <code>#moraleEvents</code>/<code>#maybeAiOfferForUserPlayer</code> adjustments, all
+        via <code>this.rng</code> in fixed roster order. No <code>Date</code>, no
+        <code>Math.random</code>.</li>
+        <li>The existing test <em>"identical seeds replay the identical career"</em> is
+        extended to a script that praises, warns, fines, delegates, and holidays — the
+        strongest single guard across all three features.</li>
+      </ul>
+
+      <h3>5.3 Delivery Order</h3>
+      <div class="timeline">
+        <div class="phase future">
+          <div class="ph-head">BUILD 1 <span class="stat-pill">STA · league statistics</span></div>
+          <p>Smallest engine delta (two accumulators + one selector) and it forces the
+          <code>SAVE_VERSION 7</code> migration scaffolding that INT reuses. Ships value on
+          day one.</p>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">BUILD 2 <span class="stat-pill">AST · assistant takes charge</span></div>
+          <p>No persistence work at all once the <code>aiSetup</code> tactics fix lands;
+          mostly UI wiring on the Continue flow. Also the feature that makes long-career
+          testing of INT faster (holiday through seasons).</p>
+        </div>
+        <div class="phase future">
+          <div class="ph-head">BUILD 3 <span class="stat-pill">INT · interaction &amp; morale</span></div>
+          <p>Largest surface and the only one with tuning risk (INT-10). Lands last, on
+          top of the v7 migration from Build 1 and validated at speed with Build 2's
+          holiday loop.</p>
+        </div>
+      </div>
+
+      <h3>5.4 Traceability</h3>
+      <table class="grid">
+        <thead><tr><th>Roadmap item (09 · §2)</th><th>Spec section</th><th>Requirements</th><th>New engine API</th></tr></thead>
+        <tbody>
+          <tr><td>Assistant manager / auto-resolve week</td><td><a href="#f1">§2</a></td><td>AST-01…07</td><td><code>delegateWeek</code>, <code>holiday</code></td></tr>
+          <tr><td>League statistics pages</td><td><a href="#f2">§3</a></td><td>STA-01…09</td><td><code>leagueLeaders</code></td></tr>
+          <tr><td>Player interaction &amp; morale events</td><td><a href="#f3">§4</a></td><td>INT-01…11</td><td><code>praisePlayer</code>, <code>warnPlayer</code>, <code>finePlayer</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>6. Acceptance Criteria (Horizon 1 exit)</h2>
+      <div class="callout blue">
+        <span class="label">Horizon 1 is done when</span>
+        <ol>
+          <li>A full season can be completed without watching a single match, using
+          delegation and holiday, and replays identically from its seed.</li>
+          <li>The Stats screen answers "who leads my division in goals, assists, rating,
+          cards, and clean sheets" in two clicks, with the user's players highlighted.</li>
+          <li>A player can be driven to a transfer request and talked back from one — and
+          the morale difference is visible in results, not just in a column.</li>
+          <li>The engine test suite grows by ~20 tests (§2.5, §3.5, §4.5) and stays green,
+          including the extended determinism replay.</li>
+          <li>v6 saves load cleanly into v7 with a single explanatory inbox note.</li>
+        </ol>
+      </div>
+
+      <p style="margin-top:30px"><a href="09-roadmap.html">← 09 · Roadmap</a> · <a href="index.html">Back to index</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 10 · Horizon 1 Specs</footer>
+</body>
+</html>

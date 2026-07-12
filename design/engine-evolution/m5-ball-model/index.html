@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EE-5 · Ball Location &amp; Possession Chains — Champman Design</title>
+  <link rel="stylesheet" href="../../design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-5</span>
+    <span class="spacer"></span>
+    <span class="meta">Milestone design · buildable</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Track</h3>
+      <a href="../../11-engine-evolution.html">11 · Engine Evolution</a>
+      <h3>Milestones</h3>
+      <a href="../m1-extensible-core/index.html">EE-1 · Extensible Core</a>
+      <a href="../m2-positions-formations/index.html">EE-2 · Positions</a>
+      <a href="../m3-attributes/index.html">EE-3 · Attributes</a>
+      <a href="../m4-player-instructions/index.html">EE-4 · Instructions</a>
+      <a href="index.html" class="active">EE-5 · Ball Model</a>
+      <a href="../m6-action-stream/index.html">EE-6 · Action Stream</a>
+      <a href="../m7-match-viewer/index.html">EE-7 · Match Viewer</a>
+      <h3>Reference</h3>
+      <a href="../../04-engine-specs.html">04 · Engine Specs</a>
+      <a href="../../06-test-plan.html">06 · Test Plan</a>
+    </nav>
+
+    <article class="doc">
+      <h1>EE-5 · Ball Location &amp; Possession Chains</h1>
+      <p class="subtitle">The ball is somewhere on the pitch and possession flows through zones — pressure spells become real simulation state, and the territory bar displays the truth</p>
+
+      <h2>1. Purpose</h2>
+      <p>Today each minute independently asks "who attacks?" and "is there a chance?" —
+      there is no ball, no territory, no build-up between thirds. This milestone gives the
+      simulation a ball state: which third it is in and who has it. Minutes become short
+      chains of zone transitions; chances arise only from the final third; winning the
+      midfield means <em>living</em> in the opponent's half rather than just winning a
+      coin-flip more often. This is the platform EE-6 (actions happen in a zone) and EE-7
+      (the viewer shows the ball moving) stand on — and it resurrects CM's momentum bar
+      with a mechanic attached.</p>
+      <div class="callout gold">
+        <span class="label">Realism stance (carried from the roadmap discussion)</span>
+        <p>Real football's <em>goals</em> are near-independent (Poisson-like), but its
+        <em>shots and territory</em> cluster into spells. The zone model must reproduce
+        exactly that split: shot clustering up, scoreline distribution unchanged. The EE-1
+        invariant bands — especially goals/match, 0-0 rate, and the ≥5-goal cap — are the
+        hard gate. Conversion probabilities stay independent per shot; no
+        "hot streak" multiplier on finishing, ever.</p>
+      </div>
+
+      <h2>2. Session Scope</h2>
+      <table class="grid">
+        <thead><tr><th>In scope</th><th>Out of scope (deferred)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Zone + possession state machine; tick loop inside <code>playMinute</code>;
+            transition probabilities from strengths/instructions/mentality; chance
+            creation gated on final third; territory &amp; final-third-entry stats;
+            match-screen territory bar; calibration + re-baseline.</td>
+            <td>Named per-action resolution (EE-6 — this milestone keeps the existing
+            aggregate build-up bookkeeping, just zone-aware); lateral position (left/
+            centre/right channels); set-piece zones; any change to fouls/cards/injury
+            phases; momentum <em>display animation</em> polish beyond the bar.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line</strong>: this milestone is indivisible at the engine level (the
+      state machine replaces the possession/chance phases wholesale), so the cut is at
+      calibration breadth: ship when invariants pass for balanced squads; the
+      extreme-matchup calibration table (§4.4) can be finished in a follow-up if needed.</p>
+
+      <h2>3. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>BALL-01</td><td>Match state gains <code>ball = { zone ∈ {D, M, A} (from home's view), owner ∈ {home, away} }</code>, initialised M/kickoff-side, reset to M after goals and to owner's D after saves/claims.</td><td>Must</td></tr>
+          <tr><td>BALL-02</td><td>Each minute runs 3 ticks. Per tick the owning side rolls: advance a zone, hold zone, or lose possession (turnover keeps zone, flipping perspective). Probabilities derive from midfield battle (M), attack-vs-defence (A/D), mentality, and pressing instructions.</td><td>Must</td></tr>
+          <tr><td>BALL-03</td><td>Chance creation rolls only when the owner's ball is in their attacking third; per-tick probability calibrated so shots/match stays inside the invariant band. <code>#resolveChance</code> itself is unchanged this milestone.</td><td>Must</td></tr>
+          <tr><td>BALL-04</td><td>The existing phase order (EE-1) is preserved outside the replaced possession/build-up/chance phases; fouls, cards, injuries, fatigue, subs, AI policies are untouched.</td><td>Must</td></tr>
+          <tr><td>BALL-05</td><td>New side stats: <code>territoryPct</code> (share of ticks with ball in opponent half) and <code>finalThirdEntries</code>; possession stat now = share of owned ticks (replaces owned-minutes, same meaning, finer grain).</td><td>Must</td></tr>
+          <tr><td>BALL-06</td><td>Every tick appends to a compact <code>flow</code> log: <code>{minute, tick, zone, owner}</code> — the data source for the territory bar now and the viewer's camera in EE-7. ~290 entries/match, in-memory and in match result only.</td><td>Must</td></tr>
+          <tr><td>BALL-07</td><td>The live match screen shows a CM-style horizontal territory bar (rolling last-10-minutes window) between the score and the commentary feed, plus territory % in the post-match stats panel.</td><td>Must</td></tr>
+          <tr><td>BALL-08</td><td>Statistical invariants all hold; additionally shot clustering is demonstrated: distribution of shots per 10-minute window shows over-dispersion vs Poisson (variance/mean &gt; 1.15), while goals per match do not (&lt; 1.15).</td><td>Must</td></tr>
+          <tr><td>BALL-09</td><td>Commentary gains zone flavour on chance build-up ("camped in the final third", "breaks from deep") chosen from the flow state — no new RNG structure beyond the existing pick.</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Engine Design</h2>
+      <h3>4.1 The state machine</h3>
+      <div class="diagram">
+<pre>
+Zones from HOME's perspective (away's A is home's D):
+
+  [home D] ◄──── [ M ] ────► [home A]
+     ▲              ▲             ▲
+   away attacks   contest      home attacks
+
+Per tick, owner rolls (weights before normalisation):
+  advance  = base 0.34 × zoneStep × instrMod
+  hold     = base 0.38
+  turnover = base 0.28 × pressMod × zonePressure
+
+zoneStep:  M→A uses attack-vs-defence ratio  (2·atk/(atk+def), clamped .6–1.6)
+           D→M uses midfield ratio (same shape)
+turnover in own D is dangerous: opponent's next-tick chance gate is already open
+</pre>
+      </div>
+      <pre><code>// match.js — replaces possession/buildUp/chanceCreation phases
+#phaseBallFlow(ctx) {
+  for (let t = 0; t &lt; TICKS_PER_MINUTE; t++) {          // 3
+    const roll = rng.weightedPick(this.#tickWeights()); // advance|hold|turnover
+    this.#applyTick(roll);                              // move zone / flip owner
+    this.#flowLog.push({minute: ctx.minute, tick: t, ...this.ball});
+    if (this.#inFinalThird(this.ball.owner)) {
+      if (rng.chance(this.#tickChanceProb())) {          // ≈ BASE/3 rescaled
+        this.#resolveChance(...);                        // unchanged resolver
+        this.#resetAfterChance();                        // save→keeper D, goal→M
+      }
+    }
+    this.#tickBuildUp();                                 // passes/tackles bookkeeping,
+  }                                                      // zone-weighted, replaces old loop
+}</code></pre>
+      <p>Pass/tackle bookkeeping (ratings, stat lines) moves inside the tick with the same
+      expected volumes as today (build-up passes ∝ held ticks). RNG draw count per minute
+      changes — goldens are re-pinned once, invariants are the safety net, per the EE-1
+      doctrine.</p>
+
+      <h3>4.2 Why pressure spells emerge (and stay honest)</h3>
+      <p>A side that keeps winning advance rolls parks the ball in its attacking third;
+      each held tick there re-opens the chance gate. That is shot clustering — from state,
+      not from a bonus. Conversion per shot is untouched, so goals stay near-Poisson
+      (BALL-08 asserts both halves of this). The 10-minute rolling territory bar therefore
+      <em>displays</em> pressure rather than inventing it.</p>
+
+      <h3>4.3 Instruction &amp; mentality coupling</h3>
+      <table class="grid">
+        <thead><tr><th>Input</th><th>Effect on transitions</th></tr></thead>
+        <tbody>
+          <tr><td>Mentality attacking</td><td>advance ×1.12 / hold ×0.95 (replaces today's create-mod at the chance roll)</td></tr>
+          <tr><td>Mentality defensive</td><td>advance ×0.88, turnover-in-own-half ×0.92 (harder to dislodge)</td></tr>
+          <tr><td>press high (defending side, EE-4)</td><td>opponent turnover ×1.25 in their D/M; own concedeQ unchanged</td></tr>
+          <tr><td>sit deep</td><td>opponent advance into A ×1.1, but chance quality there ×0.95 (carried from EE-4's concedeQ)</td></tr>
+          <tr><td>forward runs</td><td>no transition effect; they act at chance resolution as today</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.4 Calibration targets</h3>
+      <table class="grid">
+        <thead><tr><th>Scenario (~400 sims each)</th><th>Target</th></tr></thead>
+        <tbody>
+          <tr><td>Equal sides</td><td>All EE-1 bands; territory 50±6; final-third entries 18–35/side</td></tr>
+          <tr><td>Strong v weak (+15 ability)</td><td>Territory 56–70% strong side; win rate within ±4pts of pre-EE-5</td></tr>
+          <tr><td>Attacking v defensive mentality</td><td>Attacking side: more shots and territory; defensive side: fewer big losses than pre-EE-5 attacking-blowout rate</td></tr>
+          <tr><td>Shot windows</td><td>var/mean of shots per 10-min window &gt; 1.15; goals/match var/mean &lt; 1.15</td></tr>
+        </tbody>
+      </table>
+
+      <h2>5. Data Model &amp; Save Changes</h2>
+      <p><strong>No SAVE_VERSION bump.</strong> Ball state and flow log are per-match,
+      in-memory, surfaced in the match result object (additive fields:
+      <code>stats.*.territoryPct</code>, <code>stats.*.finalThirdEntries</code>,
+      <code>flow</code>). <code>lastResults</code> consumers ignore unknown fields.</p>
+
+      <h2>6. UI Design</h2>
+      <div class="diagram">
+<pre>
+LIVE MATCH — territory bar (rolling 10 minutes)
+┌──────────────────────────────────────────────────────────────────┐
+│  67'  KETTLEWORTH UTD  1 - 1  MILTON ROVERS         [PAUSE ⏸]    │
+│                                                                  │
+│  KET ◄▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░► MIL      ◀ BALL-07: last-10-min   │
+│        pressing high up the pitch          territory, live       │
+│                                                                  │
+│  67' Hurst finds space on the edge of the box                    │
+│  66' Kettleworth camped in the final third        ◀ BALL-09      │
+│  64' Corner to Kettleworth                                       │
+└──────────────────────────────────────────────────────────────────┘
+
+FULL-TIME — stats panel gains two rows
+┌──────────────────────────────┐
+│ Possession      54%  ·  46%  │
+│ Territory       61%  ·  39%  │  ◀ new
+│ Final ⅓ entries  27  ·  15   │  ◀ new
+│ Shots (on)    14 (6) · 9 (3) │
+└──────────────────────────────┘
+</pre>
+      </div>
+      <p>The bar is two-tone with a midline; it fills from the centre toward the dominant
+      side and eases between updates (CSS transition, one update/simulated minute). No
+      xG, no numbers on the live bar — it reads at a glance like CM's.</p>
+
+      <h2>7. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>state machine sanity</td><td>unit</td><td>Zone/owner always valid; goal resets to M with conceding side's kickoff; save resets to keeper's D; flow log length = 3 × played minutes.</td></tr>
+          <tr><td>chance gate</td><td>unit</td><td>Zero chances created with ball outside owner's attacking third across a forced-path sim (test hook drives transitions).</td></tr>
+          <tr><td>territory follows strength</td><td>statistical</td><td>Strong side's territory 56–70% (§4.4); equal sides 50±6.</td></tr>
+          <tr><td>clustering split</td><td>statistical</td><td>Shot-window over-dispersion &gt; 1.15; goal dispersion &lt; 1.15 (BALL-08 — the milestone's signature test).</td></tr>
+          <tr><td>invariants hold</td><td>statistical</td><td>All EE-1 bands pass post-calibration; goldens re-pinned once with reason "EE-5 zone model".</td></tr>
+          <tr><td>stats coherent</td><td>unit</td><td>possession + territory internally consistent (owner-in-opp-half ticks ≤ owned ticks); both sides sum correctly.</td></tr>
+          <tr><td>mid-match interactions survive</td><td>determinism</td><td>Scripted pause/sub/instruction-change match replays identically; existing sub/red-card tests pass.</td></tr>
+          <tr><td>territory bar renders</td><td>browser smoke</td><td>Bar present, updates during a watched match, matches final territory stat direction.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>8. Exit Criteria</h2>
+      <div class="callout blue">
+        <span class="label">EE-5 is done when</span>
+        <ol>
+          <li>Watching a match, the territory bar visibly swings with spells of pressure,
+          and the post-match stats corroborate it.</li>
+          <li>The clustering split test passes: shots cluster, goals don't.</li>
+          <li>All invariant bands pass; season-length sim produces a sane league table.</li>
+          <li>The flow log exists in match results — EE-7's camera has its data source.</li>
+        </ol>
+      </div>
+
+      <h2>9. Risks</h2>
+      <table class="grid">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>Calibration spirals (the big risk of the track)</td><td>Base transition weights (§4.1) chosen analytically to reproduce today's expected final-third time; calibration table is worked <em>before</em> UI; cut line protects the session.</td></tr>
+          <tr><td>Blowouts from pressure snowballing</td><td>chanceProb clamp retained per tick; invariant "≥5 goals &lt; 6%" is the tripwire.</td></tr>
+          <tr><td>Territory bar reads as noise</td><td>10-minute rolling window + eased transitions; smoke-checked against stats direction.</td></tr>
+          <tr><td>Flow log bloats results</td><td>~290 compact entries; excluded from localStorage persistence (in-memory result only).</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:30px"><a href="../m4-player-instructions/index.html">← EE-4 · Instructions</a> · <a href="../m6-action-stream/index.html">Next: EE-6 · Action Stream →</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · EE-5 · Ball Location &amp; Possession Chains</footer>
+</body>
+</html>

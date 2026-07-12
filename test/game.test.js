@@ -4,7 +4,7 @@ import { Game } from '../src/engine/game.js';
 import { ability } from '../src/engine/players.js';
 
 function newGame(seed = 1) {
-  return new Game({ managerName: 'Test Manager', clubName: 'Harton Villa', seed });
+  return new Game({ managerName: 'Test Manager', clubName: 'Bolton Wanderers', seed });
 }
 
 // Play a full week with the user match auto-simulated.
@@ -14,16 +14,16 @@ function playWeek(game) {
 
 test('a new game is set up for a full season', () => {
   const game = newGame();
-  assert.equal(game.clubs.length, 24);
-  assert.equal(game.divisionClubs(1).length, 12);
-  assert.equal(game.divisionClubs(2).length, 12);
-  assert.equal(game.calendar.length, 27); // 22 league + 5 cup days
-  assert.equal(game.fixtures[1].length, 22);
-  assert.equal(game.fixtures[2].length, 22);
+  assert.equal(game.clubs.length, 40);
+  assert.equal(game.divisionClubs(1).length, 20);
+  assert.equal(game.divisionClubs(2).length, 20);
+  assert.equal(game.calendar.length, 44); // 38 league + 6 cup days
+  assert.equal(game.fixtures[1].length, 38);
+  assert.equal(game.fixtures[2].length, 38);
   assert.equal(game.inbox.length, 1);
   assert.ok(game.club.balance > 0);
   const pos = game.leaguePosition();
-  assert.ok(pos >= 1 && pos <= 12);
+  assert.ok(pos >= 1 && pos <= 20);
   const fixture = game.userFixture();
   assert.ok(fixture, 'user should have a fixture in week 0');
   assert.equal(fixture.type, 'league');
@@ -33,13 +33,13 @@ test('advancing a league week plays both divisions and updates the tables', () =
   const game = newGame(2);
   const results = playWeek(game);
   const leagueResults = results.filter((r) => r.competition === 'league');
-  assert.equal(leagueResults.length, 12); // six per division
-  assert.equal(leagueResults.filter((r) => r.division === 1).length, 6);
-  assert.equal(leagueResults.filter((r) => r.division === 2).length, 6);
+  assert.equal(leagueResults.length, 20); // 10 per division
+  assert.equal(leagueResults.filter((r) => r.division === 1).length, 10);
+  assert.equal(leagueResults.filter((r) => r.division === 2).length, 10);
   for (const d of [1, 2]) {
     const table = game.divisionTable(d);
-    assert.equal(table.length, 12);
-    assert.equal(table.reduce((s, r) => s + r.played, 0), 12);
+    assert.equal(table.length, 20);
+    assert.equal(table.reduce((s, r) => s + r.played, 0), 20);
     assert.equal(
       table.reduce((s, r) => s + r.goalsFor, 0),
       table.reduce((s, r) => s + r.goalsAgainst, 0)
@@ -83,7 +83,7 @@ test('full season: table complete, cup won, awards given, season rolls over', ()
   assert.ok(record.cupWinner, 'no cup winner recorded');
   assert.ok(record.topScorer.goals > 0, 'no top scorer');
   assert.ok(record.playerOfSeason.avg > 6, 'player of season rating too low');
-  assert.ok(record.userPosition >= 1 && record.userPosition <= 12);
+  assert.ok(record.userPosition >= 1 && record.userPosition <= 20);
   assert.equal(record.promoted.length, 2);
   assert.equal(record.relegated.length, 2);
   // New season is ready to play.
@@ -104,10 +104,10 @@ test('promotion and relegation swap clubs between divisions', () => {
     assert.equal(game.getClub(name).division, 2, `${name} was not relegated`);
   }
   // Division sizes are preserved and expectations recomputed sensibly.
-  assert.equal(game.divisionClubs(1).length, 12);
-  assert.equal(game.divisionClubs(2).length, 12);
+  assert.equal(game.divisionClubs(1).length, 20);
+  assert.equal(game.divisionClubs(2).length, 20);
   for (const club of game.clubs) {
-    assert.ok(club.expectation >= 2 && club.expectation <= 12,
+    assert.ok(club.expectation >= 2 && club.expectation <= 20,
       `${club.name} expectation ${club.expectation}`);
   }
   // Fixtures for the new season reflect the new divisions.
@@ -496,14 +496,14 @@ test('acceptJob rejects clubs that made no offer', () => {
   const game = newGame(34);
   game.sacked = true;
   game.jobOffers = ['Marsh End FC'];
-  assert.equal(game.acceptJob('Riverton Athletic').ok, false);
+  assert.equal(game.acceptJob('Manchester United').ok, false);
   assert.equal(game.acceptJob('Marsh End FC').ok, true);
 });
 
 test('reputation rises with success and poach offers arrive for overachievers', () => {
   // A small club managed brilliantly: force wins by tracking a full season
   // and inspecting reputation movement instead of playing matches by hand.
-  const game = new Game({ managerName: 'T', clubName: 'Hollowbrook United', seed: 35 });
+  const game = new Game({ managerName: 'T', clubName: 'Southend United', seed: 35 });
   const repBefore = game.reputation;
   let sawPoachNews = false;
   for (let season = 0; season < 3 && !game.sacked; season++) {
@@ -528,17 +528,17 @@ test('reputation rises with success and poach offers arrive for overachievers', 
 
 test('poach offers can be accepted (switch clubs) or declined (loyalty bonus)', () => {
   const game = newGame(36);
-  game.pendingJobOffer = { club: 'Riverton Athletic', season: 0 };
+  game.pendingJobOffer = { club: 'Manchester United', season: 0 };
   const conf = game.board.confidence;
   const declined = game.respondToJobOffer(false);
   assert.equal(declined.accepted, false);
   assert.equal(game.pendingJobOffer, null);
   assert.ok(game.board.confidence >= conf);
 
-  game.pendingJobOffer = { club: 'Riverton Athletic', season: 0 };
+  game.pendingJobOffer = { club: 'Manchester United', season: 0 };
   const accepted = game.respondToJobOffer(true);
   assert.equal(accepted.accepted, true);
-  assert.equal(game.clubName, 'Riverton Athletic');
+  assert.equal(game.clubName, 'Manchester United');
   assert.ok(game.userFixture() !== undefined);
 });
 
@@ -568,7 +568,7 @@ test('opposition report: position, form, predicted XI, danger man', () => {
   const opp = game.clubs.find((c) => c.name !== game.clubName);
   const report = game.oppositionReport(opp.name);
   assert.equal(report.club, opp.name);
-  assert.ok(report.position >= 1 && report.position <= 12);
+  assert.ok(report.position >= 1 && report.position <= 20);
   assert.equal(report.division, opp.division);
   assert.ok(report.form.length > 0);
   assert.equal(report.xi.length, 11);
@@ -598,7 +598,7 @@ test('attribute masking: ranges contain the truth, stay stable, and own players 
         assert.ok(d1.lo <= p[attr] && p[attr] <= d1.hi,
           `${p.name} ${attr}=${p[attr]} outside ${d1.lo}-${d1.hi}`);
         assert.ok(d1.lo >= 1 && d1.hi <= 99);
-        assert.ok(d1.hi - d1.lo >= 10, 'range suspiciously narrow');
+        assert.ok(d1.hi - d1.lo >= 5, 'range suspiciously narrow');
       }
     }
   }

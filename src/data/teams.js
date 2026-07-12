@@ -3,18 +3,20 @@
 
 import { createRng, hashString } from '../engine/rng.js';
 import { createPlayer } from '../engine/players.js';
+import { SQUADS_1995 } from './squads1995.js';
 
 export const FIRST_NAMES = [
-  'Danny', 'Steve', 'Gary', 'Paul', 'Robbie', 'Alan', 'Kevin', 'Dean',
-  'Lee', 'Ian', 'Neil', 'Mark', 'Craig', 'Darren', 'Tony', 'Nigel',
-  'Matt', 'Chris', 'Jamie', 'Stuart', 'Andy', 'Barry', 'Terry', 'Ray',
+  'Alan', 'Eric', 'Ryan', 'Roy', 'Ian', 'Tony', 'Teddy', 'Robbie',
+  'Les', 'David', 'Paul', 'Peter', 'Jurgen', 'Gary', 'Phil', 'Lee',
+  'Tim', 'Dennis', 'Matthew', 'Matt', 'Nicky', 'Steve', 'Stan', 'Mark',
+  'Andy', 'Stuart', 'Darren', 'Kevin', 'Jason', 'John', 'Chris', 'Colin',
 ];
 
 export const LAST_NAMES = [
-  'Sutton', 'Palmer', 'Hendry', 'Marsh', 'Doyle', 'Quinn', 'Barnes',
-  'Fletcher', 'Royle', 'Sharpe', 'Whitworth', 'Kane', 'Osgood', 'Pearce',
-  'Lawton', 'Vickers', 'Mackay', 'Brogan', 'Stamp', 'Neary', 'Holt',
-  'Radford', 'Swann', 'Tudor', 'Ellery', 'Cropper', 'Winstanley', 'Drury',
+  'Shearer', 'Cantona', 'Giggs', 'Keane', 'Wright', 'Adams', 'Sheringham', 'Fowler',
+  'Ferdinand', 'Seaman', 'Schmeichel', 'Klinsmann', 'Neville', 'Le Tissier', 'Flowers',
+  'Bergkamp', 'McManaman', 'Batty', 'Speed', 'Cole', 'Ince', 'Gascoigne', 'Pallister',
+  'Bruce', 'Southgate', 'Redknapp', 'Anderton', 'Stone', 'Barmby', 'Ginola', 'Asprilla',
 ];
 
 // Squad shape: 18 players per club.
@@ -26,31 +28,47 @@ const SQUAD_SHAPE = [
 // demands (1-based, within the club's division); capacity drives gates.
 const CLUBS = [
   // Division 1
-  { name: 'Riverton Athletic', shortName: 'RIV', tier: 88, capacity: 42000, expectation: 2, division: 1 },
-  { name: 'Kings Heath United', shortName: 'KHU', tier: 85, capacity: 38000, expectation: 3, division: 1 },
-  { name: 'Salt Quay Rovers', shortName: 'SQR', tier: 82, capacity: 33000, expectation: 4, division: 1 },
-  { name: 'Blackmoor City', shortName: 'BLA', tier: 79, capacity: 30000, expectation: 5, division: 1 },
-  { name: 'Harton Villa', shortName: 'HAR', tier: 76, capacity: 26000, expectation: 6, division: 1 },
-  { name: 'Westgate Wanderers', shortName: 'WGW', tier: 73, capacity: 24000, expectation: 7, division: 1 },
-  { name: 'Ironbridge Town', shortName: 'IRO', tier: 70, capacity: 21000, expectation: 8, division: 1 },
-  { name: 'Millfield Albion', shortName: 'MIL', tier: 67, capacity: 18000, expectation: 9, division: 1 },
-  { name: 'Copper Hill FC', shortName: 'COP', tier: 64, capacity: 15000, expectation: 10, division: 1 },
-  { name: 'Dunmore County', shortName: 'DUN', tier: 61, capacity: 13000, expectation: 11, division: 1 },
-  { name: 'Fenwick Rangers', shortName: 'FEN', tier: 58, capacity: 11000, expectation: 12, division: 1 },
-  { name: 'Ashcombe Stanley', shortName: 'ASH', tier: 55, capacity: 9000, expectation: 12, division: 1 },
+  { name: 'Manchester United', shortName: 'MUN', tier: 92, capacity: 55000, expectation: 1, division: 1 },
+  { name: 'Newcastle United', shortName: 'NEW', tier: 89, capacity: 36000, expectation: 2, division: 1 },
+  { name: 'Aston Villa', shortName: 'AVL', tier: 86, capacity: 40000, expectation: 3, division: 1 },
+  { name: 'Arsenal', shortName: 'ARS', tier: 87, capacity: 38000, expectation: 4, division: 1 },
+  { name: 'Liverpool', shortName: 'LIV', tier: 88, capacity: 41000, expectation: 3, division: 1 },
+  { name: 'Everton', shortName: 'EVE', tier: 83, capacity: 40000, expectation: 6, division: 1 },
+  { name: 'Blackburn Rovers', shortName: 'BLA', tier: 85, capacity: 31000, expectation: 5, division: 1 },
+  { name: 'Tottenham Hotspur', shortName: 'TOT', tier: 84, capacity: 33000, expectation: 6, division: 1 },
+  { name: 'Nottingham Forest', shortName: 'NFO', tier: 82, capacity: 29000, expectation: 8, division: 1 },
+  { name: 'West Ham United', shortName: 'WHU', tier: 80, capacity: 26000, expectation: 10, division: 1 },
+  { name: 'Chelsea', shortName: 'CHE', tier: 83, capacity: 34000, expectation: 8, division: 1 },
+  { name: 'Middlesbrough', shortName: 'MID', tier: 78, capacity: 30000, expectation: 12, division: 1 },
+  { name: 'Leeds United', shortName: 'LEE', tier: 81, capacity: 39000, expectation: 8, division: 1 },
+  { name: 'Wimbledon', shortName: 'WIM', tier: 77, capacity: 26000, expectation: 14, division: 1 },
+  { name: 'Sheffield Wednesday', shortName: 'SHW', tier: 79, capacity: 39000, expectation: 10, division: 1 },
+  { name: 'Coventry City', shortName: 'COV', tier: 75, capacity: 23000, expectation: 16, division: 1 },
+  { name: 'Southampton', shortName: 'SOU', tier: 74, capacity: 15000, expectation: 16, division: 1 },
+  { name: 'Manchester City', shortName: 'MCI', tier: 76, capacity: 31000, expectation: 14, division: 1 },
+  { name: 'Queens Park Rangers', shortName: 'QPR', tier: 73, capacity: 18000, expectation: 18, division: 1 },
+  { name: 'Bolton Wanderers', shortName: 'BOL', tier: 71, capacity: 22000, expectation: 20, division: 1 },
   // Division 2
-  { name: 'Bridgewater Rovers', shortName: 'BRI', tier: 54, capacity: 12000, expectation: 2, division: 2 },
-  { name: 'Norchester City', shortName: 'NOR', tier: 52, capacity: 11000, expectation: 3, division: 2 },
-  { name: 'Eastvale United', shortName: 'EAS', tier: 51, capacity: 10000, expectation: 4, division: 2 },
-  { name: 'Grimsdale Athletic', shortName: 'GRI', tier: 49, capacity: 9000, expectation: 5, division: 2 },
-  { name: 'Pellbrook Town', shortName: 'PEL', tier: 48, capacity: 8500, expectation: 6, division: 2 },
-  { name: 'Southmere FC', shortName: 'SOU', tier: 46, capacity: 8000, expectation: 7, division: 2 },
-  { name: 'Ravenmoor Wanderers', shortName: 'RAV', tier: 45, capacity: 7000, expectation: 8, division: 2 },
-  { name: 'Clifton Vale', shortName: 'CLI', tier: 43, capacity: 6500, expectation: 9, division: 2 },
-  { name: 'Oakhurst County', shortName: 'OAK', tier: 42, capacity: 6000, expectation: 10, division: 2 },
-  { name: 'Wexborough Town', shortName: 'WEX', tier: 40, capacity: 5000, expectation: 11, division: 2 },
-  { name: 'Marsh End FC', shortName: 'MAR', tier: 39, capacity: 4500, expectation: 12, division: 2 },
-  { name: 'Hollowbrook United', shortName: 'HOL', tier: 38, capacity: 4000, expectation: 12, division: 2 },
+  { name: 'Sunderland', shortName: 'SUN', tier: 72, capacity: 22000, expectation: 1, division: 2 },
+  { name: 'Derby County', shortName: 'DER', tier: 71, capacity: 18000, expectation: 2, division: 2 },
+  { name: 'Crystal Palace', shortName: 'CRY', tier: 70, capacity: 26000, expectation: 3, division: 2 },
+  { name: 'Stoke City', shortName: 'STK', tier: 68, capacity: 22000, expectation: 4, division: 2 },
+  { name: 'Charlton Athletic', shortName: 'CHA', tier: 67, capacity: 15000, expectation: 6, division: 2 },
+  { name: 'Ipswich Town', shortName: 'IPS', tier: 69, capacity: 22000, expectation: 5, division: 2 },
+  { name: 'Port Vale', shortName: 'PTV', tier: 65, capacity: 18000, expectation: 8, division: 2 },
+  { name: 'Reading', shortName: 'REA', tier: 66, capacity: 14000, expectation: 8, division: 2 },
+  { name: 'Sheffield United', shortName: 'SHU', tier: 68, capacity: 32000, expectation: 6, division: 2 },
+  { name: 'Wolverhampton Wanderers', shortName: 'WOL', tier: 69, capacity: 28000, expectation: 6, division: 2 },
+  { name: 'Tranmere Rovers', shortName: 'TRA', tier: 64, capacity: 16000, expectation: 10, division: 2 },
+  { name: 'Leicester City', shortName: 'LEI', tier: 70, capacity: 21000, expectation: 4, division: 2 },
+  { name: 'Barnsley', shortName: 'BAR', tier: 63, capacity: 18000, expectation: 12, division: 2 },
+  { name: 'Birmingham City', shortName: 'BIR', tier: 65, capacity: 25000, expectation: 10, division: 2 },
+  { name: 'Huddersfield Town', shortName: 'HUD', tier: 62, capacity: 15000, expectation: 14, division: 2 },
+  { name: 'Grimsby Town', shortName: 'GRM', tier: 61, capacity: 9000, expectation: 16, division: 2 },
+  { name: 'Oldham Athletic', shortName: 'OLD', tier: 63, capacity: 13000, expectation: 14, division: 2 },
+  { name: 'Norwich City', shortName: 'NOR', tier: 68, capacity: 21000, expectation: 8, division: 2 },
+  { name: 'Millwall', shortName: 'MIL', tier: 60, capacity: 19000, expectation: 18, division: 2 },
+  { name: 'Southend United', shortName: 'STD', tier: 59, capacity: 12000, expectation: 20, division: 2 },
 ];
 
 function generateSquad(club) {
@@ -59,12 +77,22 @@ function generateSquad(club) {
   const players = [];
   let index = 0;
 
+  const realPlayers = SQUADS_1995[club.name] ? [...SQUADS_1995[club.name]] : [];
+
   for (const [pos, count] of SQUAD_SHAPE) {
     for (let i = 0; i < count; i++) {
       let name;
-      do {
-        name = `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`;
-      } while (usedNames.has(name));
+      
+      const realIndex = realPlayers.findIndex(p => p[1] === pos);
+      if (realIndex !== -1) {
+        name = realPlayers[realIndex][0];
+        realPlayers.splice(realIndex, 1);
+      } else {
+        do {
+          name = `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`;
+        } while (usedNames.has(name));
+      }
+
       usedNames.add(name);
 
       // First-choice players sit around the club's tier; squad depth

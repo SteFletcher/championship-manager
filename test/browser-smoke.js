@@ -36,21 +36,26 @@ try {
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#team-rows tr');
 
+  const { default: worldSize } = await import('./world-size.js');
   const teamCount = await page.$$eval('#team-rows tr', (rows) => rows.length);
-  assert.equal(teamCount, 24, `expected 24 clubs across two divisions, got ${teamCount}`);
+  assert.equal(teamCount, worldSize.clubs,
+    `expected ${worldSize.clubs} clubs across two divisions, got ${teamCount}`);
   await page.hover('#team-rows tr:nth-child(5)');
   const squadCount = await page.$$eval('#squad-rows tr', (rows) => rows.length);
   assert.equal(squadCount, 18, `squad panel shows ${squadCount} players`);
-  console.log('✔ start screen: 24 clubs in two divisions, 18-player squads on hover');
+  console.log(`✔ start screen: ${worldSize.clubs} clubs in two divisions, 18-player squads on hover`);
   await shot('01-start');
 
   await page.$eval('#manager-name', (el) => { el.value = ''; });
   await page.type('#manager-name', 'Test Gaffer');
-  await page.click('#team-rows tr:nth-child(5)'); // Harton Villa, mid-table
+  // Row 5: a mid-table Division 1 club, whichever club that is in the data.
+  const pickedClub = await page.$eval('#team-rows tr:nth-child(5)',
+    (row) => row.querySelector('td')?.textContent.trim() ?? row.textContent.trim());
+  await page.click('#team-rows tr:nth-child(5)');
   await page.waitForSelector('#hub-screen:not([hidden])');
 
   const hud = await page.$eval('#hud', (el) => el.textContent);
-  assert.ok(hud.includes('Harton Villa') && hud.includes('Test Gaffer'), hud);
+  assert.ok(hud.includes(pickedClub) && hud.includes('Test Gaffer'), hud);
   const welcome = await page.$eval('.news-item', (el) => el.textContent);
   assert.ok(welcome.includes('Welcome'), 'no welcome news');
   console.log('✔ career started, hub + inbox render');
@@ -84,13 +89,13 @@ try {
 
   await page.click('.nav-btn[data-screen="table"]');
   const tableRows = await page.$$eval('#hub-content tbody tr', (r) => r.length);
-  assert.equal(tableRows, 24, `both division tables should render (${tableRows} rows)`);
+  assert.equal(tableRows, worldSize.clubs, `both division tables should render (${tableRows} rows)`);
   const panels = await page.$$eval('#hub-content .panel-title', (els) => els.map((e) => e.textContent));
   assert.ok(panels.some((p) => p.includes('Division 1')) && panels.some((p) => p.includes('Division 2')),
     'missing division panels');
   await page.click('.nav-btn[data-screen="fixtures"]');
   const fixtureRows = await page.$$eval('#hub-content tbody tr', (r) => r.length);
-  assert.equal(fixtureRows, 27, `calendar shows ${fixtureRows} weeks`);
+  assert.equal(fixtureRows, worldSize.seasonWeeks, `calendar shows ${fixtureRows} weeks`);
   await page.click('.nav-btn[data-screen="transfers"]');
   await page.waitForSelector('[data-bid]');
   await page.click('.nav-btn[data-screen="finances"]');
@@ -217,7 +222,7 @@ try {
   await page.click('.nav-btn[data-screen="table"]');
   const played = await page.$$eval('#hub-content tbody tr td:nth-child(3)',
     (cells) => cells.reduce((s, c) => s + Number(c.textContent), 0));
-  assert.equal(played, 24, 'both tables should show 12 played each after round 1');
+  assert.equal(played, worldSize.clubs, 'every club should show 1 played after round 1');
   console.log('✔ post-match: results recorded, both division tables updated');
   await shot('09-week-summary');
 

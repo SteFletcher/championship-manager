@@ -124,7 +124,7 @@ test('bundled squads are deterministic across module loads', async () => {
 
 test('club tiers are reflected in overall ratings', () => {
   const best = overallRating(getTeam('Manchester United'));
-  const worst = overallRating(getTeam('Luton Town'));
+  const worst = overallRating(getTeam('Southend United'));
   assert.ok(best > worst + 10, `best ${best} vs worst ${worst}`);
 });
 

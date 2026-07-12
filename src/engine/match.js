@@ -199,6 +199,9 @@ export class MatchSim {
     this.rng = createRng(this.seed);
     this.knockout = options.knockout ?? false;
     this.trackTimeline = options.timeline ?? true;
+    // Dev/test hook: called as phaseHook(name, ctx) after each minute phase.
+    // Observational only — a hook that draws from ctx.rng breaks replay.
+    this.phaseHook = options.phaseHook ?? null;
     const useHomeAdvantage = options.homeAdvantage ?? true;
     const autoSubs = options.autoSubs ?? {};
 
@@ -259,8 +262,10 @@ export class MatchSim {
     };
   }
 
-  #log(minute, type, sideKey, player, text) {
-    const e = { minute, type, side: sideKey, player: player?.name ?? null, text };
+  // Events carry both display text and a machine-readable data payload
+  // (ids, not names) so consumers never have to parse commentary strings.
+  #log(minute, type, sideKey, player, text, data = {}) {
+    const e = { minute, type, side: sideKey, player: player?.name ?? null, text, data };
     this.events.push(e);
     this.turnEvents?.push(e);
   }
@@ -384,7 +389,8 @@ export class MatchSim {
 
     if (changes.length > 0) {
       this.#log(Math.max(1, this.minute), 'tactics', sideKey, null,
-        `${side.setup.shortName} switch to ${side.setup.formation} (${side.setup.mentality})`);
+        `${side.setup.shortName} switch to ${side.setup.formation} (${side.setup.mentality})`,
+        { formation: side.setup.formation, mentality: side.setup.mentality });
     }
     return { ok: true, changed: changes.length > 0 };
   }
@@ -429,7 +435,8 @@ export class MatchSim {
     const line = this.#line(side, on);
     line.slot = slot;
     this.#log(Math.max(1, this.minute), 'sub', sideKey, on,
-      `${side.setup.shortName} substitution: ${on.name} replaces ${offEntry.player.name}`);
+      `${side.setup.shortName} substitution: ${on.name} replaces ${offEntry.player.name}`,
+      { onId: pid(on), offId: pid(offEntry.player) });
     return { ok: true };
   }
 
@@ -459,7 +466,8 @@ export class MatchSim {
     volunteer.slot = 'GK';
     this.#line(side, volunteer.player).slot = 'GK';
     this.#log(Math.max(1, this.minute), 'sub', sideKey, volunteer.player,
-      `${volunteer.player.name} pulls on the gloves — an emergency keeper!`);
+      `${volunteer.player.name} pulls on the gloves — an emergency keeper!`,
+      { onId: pid(volunteer.player), offId: null });
   }
 
   #autoSubPolicy(sideKey, side) {
@@ -475,33 +483,82 @@ export class MatchSim {
     this.#forcedSub(sideKey, side, tired.e.player, tired.e.slot);
   }
 
+  // The minute loop is an ordered pipeline of named phases. The order fixes
+  // the RNG draw sequence — AI policies (home, away) → possession →
+  // build-up → discipline (home, away) → injuries (home, away) → chance
+  // creation/resolution — and is load-bearing: reordering phases, or moving
+  // an RNG draw between them, changes every match played from a given seed.
+  // The golden-master suite exists to catch exactly that.
+  static MINUTE_PHASES = [
+    'halfTimeWhistle',
+    'aiPolicies',
+    'possession',
+    'buildUp',
+    'discipline',
+    'injuries',
+    'chanceCreation',
+    'fatigue',
+    'snapshot',
+    'clock',
+  ];
+
+  #phases = {
+    halfTimeWhistle: (ctx) => this.#phaseHalfTimeWhistle(ctx),
+    aiPolicies: (ctx) => this.#phaseAiPolicies(ctx),
+    possession: (ctx) => this.#phasePossession(ctx),
+    buildUp: (ctx) => this.#phaseBuildUp(ctx),
+    discipline: (ctx) => this.#phaseDiscipline(ctx),
+    injuries: (ctx) => this.#phaseInjuries(ctx),
+    chanceCreation: (ctx) => this.#phaseChanceCreation(ctx),
+    fatigue: (ctx) => this.#phaseFatigue(ctx),
+    snapshot: (ctx) => this.#phaseSnapshot(ctx),
+    clock: (ctx) => this.#phaseClock(ctx),
+  };
+
   playMinute() {
     if (this.finished) return [];
     this.turnEvents = [];
     this.minute++;
-    const minute = this.minute;
-    const rng = this.rng;
-
-    if (minute === 46) {
-      this.#log(45, 'half-time', null, null,
-        `Half time: ${this.sides.home.setup.name} ${this.score.home} - ${this.score.away} ${this.sides.away.setup.name}`);
+    // Shared per-minute context: phases communicate only through it (the
+    // possession phase writes attackerKey/att/def; build-up and chance
+    // creation read them). Later milestones add state here, not new
+    // signatures.
+    const ctx = { minute: this.minute, rng: this.rng };
+    for (const name of this.constructor.MINUTE_PHASES) {
+      this.#phases[name](ctx);
+      this.phaseHook?.(name, ctx);
     }
+    return this.turnEvents;
+  }
 
+  #phaseHalfTimeWhistle(ctx) {
+    if (ctx.minute !== 46) return;
+    this.#log(45, 'half-time', null, null,
+      `Half time: ${this.sides.home.setup.name} ${this.score.home} - ${this.score.away} ${this.sides.away.setup.name}`,
+      { score: { home: this.score.home, away: this.score.away } });
+  }
+
+  #phaseAiPolicies() {
     for (const [key, side] of Object.entries(this.sides)) {
       this.#aiTacticsPolicy(key, side);
       this.#autoSubPolicy(key, side);
     }
+  }
 
-    // Who has the ball this minute: midfield battle plus home advantage.
+  // Who has the ball this minute: midfield battle plus home advantage.
+  #phasePossession(ctx) {
     const homeMid = this.#strength(this.sides.home, 'midfield');
     const awayMid = this.#strength(this.sides.away, 'midfield');
-    const attackerKey = rng.chance(homeMid / (homeMid + awayMid)) ? 'home' : 'away';
-    const defenderKey = attackerKey === 'home' ? 'away' : 'home';
-    const att = this.sides[attackerKey];
-    const def = this.sides[defenderKey];
-    att.possessionMinutes++;
+    ctx.attackerKey = ctx.rng.chance(homeMid / (homeMid + awayMid)) ? 'home' : 'away';
+    ctx.defenderKey = ctx.attackerKey === 'home' ? 'away' : 'home';
+    ctx.att = this.sides[ctx.attackerKey];
+    ctx.def = this.sides[ctx.defenderKey];
+    ctx.att.possessionMinutes++;
+  }
 
-    // Quiet build-up play drives passes, tackles and the live ratings.
+  // Quiet build-up play drives passes, tackles and the live ratings.
+  #phaseBuildUp(ctx) {
+    const { rng, att, def } = ctx;
     const passAttempts = rng.int(3, 8);
     for (let i = 0; i < passAttempts; i++) {
       const passer = this.#pick(att, PASS_WEIGHT, POSITIONS);
@@ -519,8 +576,11 @@ export class MatchSim {
         this.#rate(def, tackler.player, RATING.tackle);
       }
     }
+  }
 
-    // Fouls and cards.
+  // Fouls and cards.
+  #phaseDiscipline(ctx) {
+    const { minute, rng } = ctx;
     for (const [key, side] of Object.entries(this.sides)) {
       if (!rng.chance(0.11)) continue;
       side.stats.fouls++;
@@ -530,7 +590,8 @@ export class MatchSim {
       this.#line(side, offender).fouls++;
       this.#rate(side, offender, RATING.foul);
       this.#log(minute, 'foul', key, offender,
-        fill(rng.pick(COMMENTARY.foul), { player: offender.name }));
+        fill(rng.pick(COMMENTARY.foul), { player: offender.name }),
+        { playerId: pid(offender) });
 
       const straightRed = rng.chance(0.006);
       const booked = !straightRed && rng.chance(0.11);
@@ -543,14 +604,16 @@ export class MatchSim {
           this.#removeFromPitch(side, offender);
           this.#ensureKeeper(key, side);
           this.#log(minute, 'red', key, offender,
-            `Second yellow! ${offender.name} is off — ${side.setup.name} are down to ${side.onPitch.length} men!`);
+            `Second yellow! ${offender.name} is off — ${side.setup.name} are down to ${side.onPitch.length} men!`,
+            { playerId: pid(offender) });
         } else {
           side.yellowCarded.add(offender.name);
           side.stats.yellowCards++;
           this.#line(side, offender).yellow++;
           this.#rate(side, offender, RATING.yellow);
           this.#log(minute, 'yellow', key, offender,
-            fill(rng.pick(COMMENTARY.yellow), { player: offender.name }));
+            fill(rng.pick(COMMENTARY.yellow), { player: offender.name }),
+            { playerId: pid(offender) });
         }
       } else if (straightRed) {
         side.stats.redCards++;
@@ -564,11 +627,16 @@ export class MatchSim {
             player: offender.name,
             team: side.setup.name,
             count: side.onPitch.length,
-          }));
+          }),
+          { playerId: pid(offender) });
       }
     }
 
-    // Injuries: a knock serious enough to end the player's involvement.
+  }
+
+  // Injuries: a knock serious enough to end the player's involvement.
+  #phaseInjuries(ctx) {
+    const { minute, rng } = ctx;
     for (const [key, side] of Object.entries(this.sides)) {
       if (!rng.chance(0.0018)) continue;
       const victims = side.onPitch.map((e) => ({
@@ -588,7 +656,8 @@ export class MatchSim {
         side: key, id: pid(entry.player), player: entry.player.name, minute, weeks,
       });
       this.#log(minute, 'injury', key, entry.player,
-        fill(rng.pick(COMMENTARY.injury), { player: entry.player.name }));
+        fill(rng.pick(COMMENTARY.injury), { player: entry.player.name }),
+        { playerId: pid(entry.player), weeks });
       // AI-managed sides substitute immediately (makeSub removes the
       // injured player). A user-managed side (autoSubs false) is left a
       // man short until the manager reacts — the UI pauses for it.
@@ -598,7 +667,11 @@ export class MatchSim {
       this.#ensureKeeper(key, side);
     }
 
-    // Does the attacking team fashion a chance?
+  }
+
+  // Does the attacking team fashion a chance?
+  #phaseChanceCreation(ctx) {
+    const { rng, att, def } = ctx;
     const atkStrength = this.#strength(att, 'attack');
     const defStrength = this.#strength(def, 'defense');
     const mods = MENTALITY_MODS[att.setup.mentality].create *
@@ -607,9 +680,11 @@ export class MatchSim {
       BASE_CHANCE_PROB * mods * (2 * atkStrength) / (atkStrength + defStrength),
       0.06, 0.5
     );
-    if (rng.chance(chanceProb)) this.#resolveChance(attackerKey, att, defenderKey, def);
+    if (rng.chance(chanceProb)) this.#resolveChance(ctx.attackerKey, att, ctx.defenderKey, def);
+  }
 
-    // Legs get heavier as the match wears on.
+  // Legs get heavier as the match wears on.
+  #phaseFatigue() {
     for (const side of Object.values(this.sides)) {
       for (const e of side.onPitch) {
         const line = this.#line(side, e.player);
@@ -617,17 +692,19 @@ export class MatchSim {
         line.condition = Math.max(20, line.condition - (e.slot === 'GK' ? 0.08 : 0.3));
       }
     }
+  }
 
-    if (this.trackTimeline) {
-      this.timeline.push({
-        minute,
-        home: [...this.sides.home.lines.values()].map((l) => ({ ...l })),
-        away: [...this.sides.away.lines.values()].map((l) => ({ ...l })),
-      });
-    }
+  #phaseSnapshot(ctx) {
+    if (!this.trackTimeline) return;
+    this.timeline.push({
+      minute: ctx.minute,
+      home: [...this.sides.home.lines.values()].map((l) => ({ ...l })),
+      away: [...this.sides.away.lines.values()].map((l) => ({ ...l })),
+    });
+  }
 
-    if (minute >= this.finalMinute) this.#endStage();
-    return this.turnEvents;
+  #phaseClock(ctx) {
+    if (ctx.minute >= this.finalMinute) this.#endStage();
   }
 
   #resolveChance(attackerKey, att, defenderKey, def) {
@@ -644,13 +721,15 @@ export class MatchSim {
         player: shooter.name,
         team: att.setup.name,
         opponent: def.setup.name,
-      }));
+      }),
+      { playerId: pid(shooter) });
 
     const missProb = clamp(0.42 - shooter.atk * 0.0015, 0.2, 0.4);
     if (rng.chance(missProb)) {
       this.#rate(att, shooter, RATING.shotOff);
       this.#log(minute, 'miss', attackerKey, shooter,
-        fill(rng.pick(COMMENTARY.miss), { player: shooter.name }));
+        fill(rng.pick(COMMENTARY.miss), { player: shooter.name }),
+        { playerId: pid(shooter) });
       return;
     }
     if (rng.chance(0.22)) {
@@ -661,7 +740,8 @@ export class MatchSim {
         this.#rate(def, blocker.player, RATING.tackle);
       }
       this.#log(minute, 'block', attackerKey, shooter,
-        fill(rng.pick(COMMENTARY.block), { player: shooter.name }));
+        fill(rng.pick(COMMENTARY.block), { player: shooter.name }),
+        { playerId: pid(shooter) });
       if (rng.chance(0.55)) {
         att.stats.corners++;
         this.#log(minute, 'corner', attackerKey, null,
@@ -685,10 +765,12 @@ export class MatchSim {
       const providers = att.onPitch.filter(
         (e) => e.slot !== 'GK' && pid(e.player) !== pid(shooter)
       );
+      let assistId = null;
       if (providers.length > 0 && rng.chance(0.6)) {
         const provider = rng.weightedPick(
           providers.map((e) => ({ item: e, weight: ASSIST_WEIGHT[e.slot] ?? 1 }))
         );
+        assistId = pid(provider.player);
         this.#line(att, provider.player).assists++;
         this.#rate(att, provider.player, RATING.assist);
       }
@@ -699,14 +781,20 @@ export class MatchSim {
       }
 
       this.#log(minute, 'goal', attackerKey, shooter,
-        fill(rng.pick(COMMENTARY.goal), { player: shooter.name, team: att.setup.name }));
+        fill(rng.pick(COMMENTARY.goal), { player: shooter.name, team: att.setup.name }),
+        {
+          playerId: pid(shooter),
+          assistId,
+          score: { home: this.score.home, away: this.score.away },
+        });
     } else {
       if (keeperEntry) {
         this.#line(def, keeperEntry.player).saves++;
         this.#rate(def, keeperEntry.player, RATING.save);
       }
       this.#log(minute, 'save', attackerKey, shooter,
-        fill(rng.pick(COMMENTARY.save), { player: shooter.name }));
+        fill(rng.pick(COMMENTARY.save), { player: shooter.name }),
+        { shooterId: pid(shooter), keeperId: keeperEntry ? pid(keeperEntry.player) : null });
       if (rng.chance(0.35)) {
         att.stats.corners++;
         this.#log(minute, 'corner', attackerKey, null,
@@ -766,7 +854,8 @@ export class MatchSim {
       this.#log(this.minute, scored ? 'penalty-scored' : 'penalty-missed', key, taker,
         scored
           ? `${taker.name} scores! ${tally.home}-${tally.away}`
-          : `${taker.name} misses! Still ${tally.home}-${tally.away}`);
+          : `${taker.name} misses! Still ${tally.home}-${tally.away}`,
+        { playerId: pid(taker), tally: { home: tally.home, away: tally.away } });
       return scored;
     };
 
@@ -797,7 +886,8 @@ export class MatchSim {
   #finishShootout() {
     const winner = this.shootout.home > this.shootout.away ? 'home' : 'away';
     this.#log(this.minute, 'shootout-end', winner, null,
-      `${this.sides[winner].setup.name} win the shootout ${this.shootout.home}-${this.shootout.away}!`);
+      `${this.sides[winner].setup.name} win the shootout ${this.shootout.home}-${this.shootout.away}!`,
+      { tally: { home: this.shootout.home, away: this.shootout.away } });
   }
 
   #complete() {
@@ -819,7 +909,12 @@ export class MatchSim {
 
     this.#log(this.minute, 'full-time', null, null,
       `Full time: ${this.sides.home.setup.name} ${this.score.home} - ${this.score.away} ${this.sides.away.setup.name}` +
-      (this.shootout ? ` (${this.shootout.home}-${this.shootout.away} on penalties)` : ''));
+      (this.shootout ? ` (${this.shootout.home}-${this.shootout.away} on penalties)` : ''),
+      {
+        score: { home: this.score.home, away: this.score.away },
+        shootout: this.shootout
+          ? { home: this.shootout.home, away: this.shootout.away } : null,
+      });
 
     const total = this.sides.home.possessionMinutes + this.sides.away.possessionMinutes;
     this.sides.home.stats.possession = Math.round(

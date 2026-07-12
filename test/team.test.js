@@ -123,12 +123,12 @@ test('bundled squads are deterministic across module loads', async () => {
 });
 
 test('club tiers are reflected in overall ratings', () => {
-  const best = overallRating(getTeam('Riverton Athletic'));
-  const worst = overallRating(getTeam('Ashcombe Stanley'));
+  const best = overallRating(getTeam('Manchester United'));
+  const worst = overallRating(getTeam('Luton Town'));
   assert.ok(best > worst + 10, `best ${best} vs worst ${worst}`);
 });
 
 test('getTeam finds clubs by name', () => {
-  assert.equal(getTeam('Riverton Athletic').shortName, 'RIV');
+  assert.equal(getTeam('Manchester United').shortName, 'MUN');
   assert.equal(getTeam('Nonexistent FC'), undefined);
 });

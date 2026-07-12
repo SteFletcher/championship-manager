@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test 'test/*.test.js'",
+    "golden:update": "node tools/update-goldens.js",
     "serve": "python3 -m http.server 8123"
   },
   "devDependencies": {

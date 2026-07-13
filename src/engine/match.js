@@ -22,6 +22,7 @@ import {
   validateTeam, selectXI, familiarity, FORMATIONS, MENTALITIES,
   POSITIONS, DETAILED_POSITIONS, UNIT_OF, unitOf, ATTR_MIN, ATTR_MAX,
 } from './team.js';
+import { attrOf, unitContribution } from './players.js';
 
 const HOME_ADVANTAGE = 1.12; // multiplier on home midfield/attack effectiveness
 const BASE_CHANCE_PROB = 0.28; // chance of a shot in an attacking minute
@@ -279,27 +280,26 @@ export class MatchSim {
     l.rating = clamp(l.rating + delta, 1, 10);
   }
 
-  // Effective contribution of an on-pitch entry for an attribute.
-  #eff(side, entry, attr) {
+  // Effective contribution of an on-pitch entry given a base skill value
+  // (an attribute or blend): scaled by familiarity, sharpness, condition.
+  #eff(side, entry, base) {
     const line = this.#line(side, entry.player);
     const conditionFactor = 0.7 + 0.3 * (line.condition / 100);
-    return entry.player[attr] * familiarity(entry.player, entry.slot) *
+    return base * familiarity(entry.player, entry.slot) *
       side.sharpness.get(pid(entry.player)) * conditionFactor;
   }
 
   // Unit strength averaged over the kickoff slot count, so sendings off
-  // and unreplaced injuries genuinely weaken the side.
+  // and unreplaced injuries genuinely weaken the side. Each unit reads
+  // the attributes that should drive it (EE-3, unitContribution).
   #unit(side, unit) {
     const entries = side.onPitch.filter((e) => unitOf(e.slot) === unit);
     if (unit === 'GK') {
       if (entries.length === 0) return 5;
-      return this.#eff(side, entries[0], 'def');
+      return this.#eff(side, entries[0], unitContribution(entries[0].player, 'GK'));
     }
-    const attr = unit === 'DF' ? 'def' : unit === 'FW' ? 'atk' : null;
-    const total = entries.reduce((sum, e) => {
-      if (attr) return sum + this.#eff(side, e, attr);
-      return sum + (this.#eff(side, e, 'atk') + this.#eff(side, e, 'def')) / 2;
-    }, 0);
+    const total = entries.reduce(
+      (sum, e) => sum + this.#eff(side, e, unitContribution(e.player, unit)), 0);
     return Math.max(5, total / Math.max(1, side.slotCounts[unit]));
   }
 
@@ -578,7 +578,7 @@ export class MatchSim {
     for (let i = 0; i < passAttempts; i++) {
       const passer = this.#pick(att, PASS_WEIGHT, POSITIONS);
       if (!passer) break;
-      const skill = (passer.player.atk + passer.player.def) / 2;
+      const skill = attrOf(passer.player, 'passing');
       if (rng.chance(0.6 + (skill / 99) * 0.32)) {
         this.#line(att, passer.player).passes++;
         this.#rate(att, passer.player, RATING.pass);
@@ -586,7 +586,7 @@ export class MatchSim {
     }
     if (rng.chance(0.35)) {
       const tackler = this.#pick(def, TACKLE_WEIGHT, ['DF', 'MF', 'FW']);
-      if (tackler && rng.chance(0.45 + (tackler.player.def / 99) * 0.4)) {
+      if (tackler && rng.chance(0.45 + (attrOf(tackler.player, 'tackling') / 99) * 0.4)) {
         this.#line(def, tackler.player).tackles++;
         this.#rate(def, tackler.player, RATING.tackle);
       }
@@ -698,13 +698,19 @@ export class MatchSim {
     if (rng.chance(chanceProb)) this.#resolveChance(ctx.attackerKey, att, ctx.defenderKey, def);
   }
 
-  // Legs get heavier as the match wears on.
+  // Legs get heavier as the match wears on; high stamina fades slower
+  // (ATTR-06). The slope is steeper than the spec's illustrative 1/198 —
+  // that constant caps the 90-vs-40 stamina gap at 6.8 points over 90
+  // minutes, short of the >8 its own test plan demands. 1/165 delivers
+  // it, and the legacy fallback (49.5) still lands on a factor of 1.0.
   #phaseFatigue() {
     for (const side of Object.values(this.sides)) {
       for (const e of side.onPitch) {
         const line = this.#line(side, e.player);
         line.minutes++;
-        line.condition = Math.max(20, line.condition - (e.slot === 'GK' ? 0.08 : 0.3));
+        const decay = (e.slot === 'GK' ? 0.08 : 0.3) *
+          (1.30 - attrOf(e.player, 'stamina') / 165);
+        line.condition = Math.max(20, line.condition - decay);
       }
     }
   }
@@ -739,7 +745,7 @@ export class MatchSim {
       }),
       { playerId: pid(shooter) });
 
-    const missProb = clamp(0.42 - shooter.atk * 0.0015, 0.2, 0.4);
+    const missProb = clamp(0.42 - attrOf(shooter, 'finishing') * 0.0015, 0.2, 0.4);
     if (rng.chance(missProb)) {
       this.#rate(att, shooter, RATING.shotOff);
       this.#log(minute, 'miss', attackerKey, shooter,
@@ -770,7 +776,8 @@ export class MatchSim {
     this.#rate(att, shooter, RATING.shotOnTarget);
     const gkStrength = this.#strength(def, 'goalkeeping');
     const keeperEntry = def.onPitch.find((e) => e.slot === 'GK') ?? null;
-    const goalProb = shooter.atk / (shooter.atk + gkStrength * 4);
+    const finishing = attrOf(shooter, 'finishing');
+    const goalProb = finishing / (finishing + gkStrength * 4);
     if (rng.chance(goalProb)) {
       this.score[attackerKey]++;
       att.scorers.push({ player: shooter.name, minute });
@@ -843,7 +850,7 @@ export class MatchSim {
       const side = this.sides[key];
       takers[key] = [...side.onPitch]
         .filter((e) => e.slot !== 'GK')
-        .sort((a, b) => b.player.atk - a.player.atk)
+        .sort((a, b) => attrOf(b.player, 'finishing') - attrOf(a.player, 'finishing'))
         .map((e) => e.player);
       if (takers[key].length === 0) {
         takers[key] = side.onPitch.map((e) => e.player);
@@ -858,7 +865,9 @@ export class MatchSim {
       const oppKeeper = keepers[key === 'home' ? 'away' : 'home'];
       const taker = takers[key][taken[key] % takers[key].length];
       taken[key]++;
-      const p = clamp(0.76 + (taker.atk - oppKeeper.def) * 0.0015, 0.55, 0.92);
+      const p = clamp(
+        0.76 + (attrOf(taker, 'finishing') - attrOf(oppKeeper, 'reflexes')) * 0.0015,
+        0.55, 0.92);
       const scored = rng.chance(p);
       if (scored) {
         tally[key]++;

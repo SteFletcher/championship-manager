@@ -2,7 +2,9 @@
 // so the same players (and ratings) appear on every new game.
 
 import { createRng, hashString } from '../engine/rng.js';
-import { createPlayer, assignDetailedPositions } from '../engine/players.js';
+import {
+  createPlayer, assignDetailedPositions, expandAttributes, fairWage, fairValue,
+} from '../engine/players.js';
 import { DETAILED_POSITIONS, unitOf } from '../engine/team.js';
 import { SQUADS_1995 } from './squads1995.js';
 
@@ -132,7 +134,17 @@ function generateSquad(club) {
   }
   // Detailed positions draw from a parallel seeded stream so their
   // introduction leaves every generated name and attribute untouched.
-  return assignDetailedPositions(createRng(hashString(`${club.name}#positions`)), players);
+  assignDetailedPositions(createRng(hashString(`${club.name}#positions`)), players);
+  // Attribute expansion (EE-3) likewise uses its own stream. Positions
+  // must exist first — archetypes key off them. Composites are rewritten
+  // from the blends, so wages and values are refreshed to match.
+  const attrRng = createRng(hashString(`${club.name}#attributes`));
+  for (const p of players) {
+    expandAttributes(attrRng, p);
+    p.wage = fairWage(p);
+    p.value = fairValue(p);
+  }
+  return players;
 }
 
 // Starting balance and transfer budget scale with stature.

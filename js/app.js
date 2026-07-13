@@ -74,6 +74,74 @@ function bar(value, low = 40, mid = 65) {
   return `<span class="bar ${cls}"><span style="width:${Math.round(value)}%"></span></span>`;
 }
 
+// --- Player profile (EE-3) ------------------------------------------------
+
+const ATTR_GROUPS = [
+  ['Technical', [['passing', 'Passing'], ['finishing', 'Finishing'], ['tackling', 'Tackling']]],
+  ['Physical', [['pace', 'Pace'], ['stamina', 'Stamina'], ['positioning', 'Positioning']]],
+];
+const GK_GROUP = ['Goalkeeping', [['handling', 'Handling'], ['reflexes', 'Reflexes']]];
+
+// One labelled attribute line: exact value for own/scouted players,
+// otherwise the stable estimate range (ATTR-08).
+function attrLine(p, attr, label) {
+  const d = state.game.attrDisplay(p, attr);
+  const exact = d.exact !== undefined;
+  const shown = exact ? d.exact : Math.round((d.lo + d.hi) / 2);
+  return `<div class="attr-line">
+    <span class="attr-name">${label}</span>
+    <span class="attr-val ${exact ? '' : 'dim'}">${exact ? d.exact : `${d.lo}–${d.hi}`}</span>
+    ${bar(shown)}</div>`;
+}
+
+function closeProfile() {
+  document.getElementById('profile-overlay')?.remove();
+}
+
+function showProfile(player, clubName) {
+  const g = state.game;
+  closeProfile();
+  const groups = player.pos === 'GK' ? [...ATTR_GROUPS, GK_GROUP] : ATTR_GROUPS;
+  const sections = groups.map(([title, attrs]) => `
+    <div class="attr-group"><h3 class="panel-title">${title}</h3>
+      ${attrs.map(([a, label]) => attrLine(player, a, label)).join('')}
+    </div>`).join('');
+  const comp = (attr) => {
+    const d = g.attrDisplay(player, attr);
+    return d.exact !== undefined ? d.exact : `${d.lo}–${d.hi}`;
+  };
+  const overlay = document.createElement('div');
+  overlay.className = 'profile-overlay';
+  overlay.id = 'profile-overlay';
+  overlay.innerHTML = `
+    <div class="profile-card panel">
+      <button class="mini-btn profile-close" id="profile-close">✕ Close</button>
+      <h2>${esc(player.name)}</h2>
+      <p class="hint">${posLabel(player)} · ${player.age ?? '?'} ·
+        ${clubName ? esc(clubName) : '<span class="good">Free agent</span>'}
+        · Value ${money(player.value)}</p>
+      <div class="attr-groups">${sections}</div>
+      <p class="hint">Overall ATK ${comp('atk')} · DEF ${comp('def')}
+        ${g.knowsExactly(player) && player.form !== undefined
+          ? `· Form ${player.form.toFixed(1)} · Morale ${player.morale} · Cond ${Math.round(player.condition)}%`
+          : ''}</p>
+    </div>`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeProfile(); });
+  document.body.appendChild(overlay);
+  document.getElementById('profile-close').addEventListener('click', closeProfile);
+}
+
+// Wire every `[data-profile]` element in the hub to the profile overlay.
+// `resolve` maps a player id to { player, clubName }.
+function bindProfiles(resolve) {
+  for (const el of $('hub-content').querySelectorAll('[data-profile]')) {
+    el.addEventListener('click', () => {
+      const found = resolve(el.dataset.profile);
+      if (found) showProfile(found.player, found.clubName);
+    });
+  }
+}
+
 // --- Persistence ---------------------------------------------------------------
 
 function saveGame(note = 'Game saved') {
@@ -263,7 +331,7 @@ function renderSquad() {
   const rows = players.map((p) => `
     <tr>
       <td>${posLabel(p)}</td>
-      <td class="left">${esc(p.name)}${statusTags(p)}</td>
+      <td class="left"><span class="player-link" data-profile="${p.id}">${esc(p.name)}</span>${statusTags(p)}</td>
       <td>${p.age}</td>
       <td>${p.atk}</td>
       <td>${p.def}</td>
@@ -291,6 +359,10 @@ function renderSquad() {
   for (const btn of $('hub-content').querySelectorAll('[data-renew]')) {
     btn.addEventListener('click', () => { g.renewContract(btn.dataset.renew); saveGame(); renderHub(); });
   }
+  bindProfiles((id) => {
+    const player = g.club.players.find((p) => p.id === id);
+    return player && { player, clubName: g.clubName };
+  });
 }
 
 // Current lineup, rebuilding the default when players became unavailable.
@@ -526,7 +598,7 @@ function renderTransfers() {
   const rows = results.map((r) => `
     <tr>
       <td>${posLabel(r.player)}</td>
-      <td class="left">${esc(r.player.name)}${statusTags(r.player)}</td>
+      <td class="left"><span class="player-link" data-profile="${r.player.id}">${esc(r.player.name)}</span>${statusTags(r.player)}</td>
       <td class="left">${r.club ? esc(r.club) : '<span class="good">Free agent</span>'}</td>
       <td>${r.player.age}</td>${attrCell(r.player, 'atk')}${attrCell(r.player, 'def')}
       <td>${money(r.player.value)}</td>
@@ -570,6 +642,10 @@ function renderTransfers() {
       renderHub();
     });
   }
+  bindProfiles((id) => {
+    const r = results.find((x) => x.player.id === id);
+    return r && { player: r.player, clubName: r.club };
+  });
   for (const btn of $('hub-content').querySelectorAll('[data-bid]')) {
     btn.addEventListener('click', () => {
       const asking = Number(btn.dataset.asking);

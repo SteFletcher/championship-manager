@@ -74,6 +74,19 @@ try {
   console.log('✔ squad screen lists 18 players with detailed positions');
   await shot('03-squad');
 
+  // EE-3: clicking a player opens the attribute profile, exact for own players.
+  await page.click('#hub-content .player-link');
+  await page.waitForSelector('#profile-overlay');
+  const attrLines = await page.$$eval('#profile-overlay .attr-line', (els) => els.length);
+  assert.ok(attrLines >= 6, `profile shows only ${attrLines} attribute lines`);
+  const exactVals = await page.$$eval('#profile-overlay .attr-val', (els) =>
+    els.filter((e) => /^\d+$/.test(e.textContent.trim())).length);
+  assert.ok(exactVals >= 6, 'own player attributes should be exact');
+  await shot('03b-profile');
+  await page.click('#profile-close');
+  await page.waitForFunction(() => !document.getElementById('profile-overlay'));
+  console.log('✔ player profile shows the eight attributes exactly for own players');
+
   await page.click('.nav-btn[data-screen="tactics"]');
   const xiRows = await page.$$eval('[data-swap^="starters"]', (r) => r.length);
   assert.equal(xiRows, 11);
@@ -150,6 +163,17 @@ try {
   assert.ok(scoutingTags, 'no scouting-in-progress marker');
   console.log(`✔ attributes masked (${maskedCells} ranges) and scout dispatch works`);
   await shot('05-transfers');
+
+  // EE-3: an unscouted player's profile ranges every attribute.
+  await page.click('#hub-content .player-link');
+  await page.waitForSelector('#profile-overlay');
+  const rangedAttrs = await page.$$eval('#profile-overlay .attr-val', (els) =>
+    els.filter((e) => /\d+–\d+/.test(e.textContent)).length);
+  assert.ok(rangedAttrs >= 6, `expected per-attribute ranges, got ${rangedAttrs}`);
+  await shot('05b-scout-profile');
+  await page.click('#profile-close');
+  await page.waitForFunction(() => !document.getElementById('profile-overlay'));
+  console.log('✔ unscouted profile shows per-attribute estimate ranges');
 
   // --- Match day -----------------------------------------------------------------
   await page.click('#continue-btn');

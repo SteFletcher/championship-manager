@@ -63,9 +63,12 @@ test('a played user match result is honoured, not re-simulated', () => {
 });
 
 // Keep the board permanently happy so sacking (tested separately) can't
-// cut a season-mechanics test short.
+// cut a season-mechanics test short. Expectation is floored to bottom
+// place too — the season-end review sacks a manager who finishes far
+// below expectation regardless of mid-season confidence.
 function playWeekSecurely(game) {
   game.board.confidence = 90;
+  game.club.expectation = 20;
   return playWeek(game);
 }
 

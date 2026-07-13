@@ -8,7 +8,9 @@
 import { createRng, hashString } from './rng.js';
 import { MatchSim, simulateMatch } from './match.js';
 import { selectXI, overallRating, FORMATIONS, MENTALITIES } from './team.js';
-import { developPlayer, isAvailable, ability, detailPlayer } from './players.js';
+import {
+  developPlayer, isAvailable, ability, detailPlayer, expandAttributes,
+} from './players.js';
 import { generateFixtures, computeTable } from './league.js';
 import {
   createCup, advanceCup, cupRoundName, cupRoundCount, cupRoundNames, inCup,
@@ -27,15 +29,28 @@ function migratePlayerPositions(p) {
   detailPlayer(createRng(hashString(`${p.id}:${p.name}:pos`)), p);
 }
 
+function migratePlayerAttributes(p) {
+  expandAttributes(createRng(hashString(`${p.id}:${p.name}:attrs`)), p);
+}
+
+function forEachPlayer(data, fn) {
+  for (const club of data.clubs) club.players.forEach(fn);
+  (data.freeAgents ?? []).forEach(fn);
+  for (const offer of data.pendingOffers ?? []) {
+    if (offer.player) fn(offer.player);
+  }
+}
+
 const MIGRATIONS = {
   // v6 → v7 (EE-2): detailed positions and secondaries on every player.
   6: (data) => {
-    for (const club of data.clubs) club.players.forEach(migratePlayerPositions);
-    (data.freeAgents ?? []).forEach(migratePlayerPositions);
-    for (const offer of data.pendingOffers ?? []) {
-      if (offer.player) migratePlayerPositions(offer.player);
-    }
+    forEachPlayer(data, migratePlayerPositions);
     data.version = 7;
+  },
+  // v7 → v8 (EE-3): expand atk/def into the eight real attributes.
+  7: (data) => {
+    forEachPlayer(data, migratePlayerAttributes);
+    data.version = 8;
   },
 };
 
@@ -44,7 +59,7 @@ const WIN_MORALE = 8;
 const DRAW_MORALE = 1;
 const LOSS_MORALE = -6;
 const SACK_THRESHOLD = 15;
-const SAVE_VERSION = 7;
+const SAVE_VERSION = 8;
 const JOB_REACH = 15; // how far above your reputation a club will hire
 const SCOUT_FEE = 15000;
 const MASK_HALF_WIDTH = 8; // unscouted attributes show as a range this wide
@@ -1075,9 +1090,11 @@ export class Game {
       wage: 250,
       value: 50000,
     };
-    // Positions detail from a per-player stream (see migratePlayerPositions)
-    // so the main career RNG sequence is untouched.
-    return detailPlayer(createRng(hashString(`${player.id}:${player.name}:pos`)), player);
+    // Positions and attributes derive from per-player streams (see the
+    // migration helpers) so the main career RNG sequence is untouched.
+    detailPlayer(createRng(hashString(`${player.id}:${player.name}:pos`)), player);
+    migratePlayerAttributes(player);
+    return player;
   }
 
   // --- Tactics & persistence ---------------------------------------------------

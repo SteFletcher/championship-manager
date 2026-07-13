@@ -65,25 +65,37 @@ try {
   await page.click('.nav-btn[data-screen="squad"]');
   const squadRows = await page.$$eval('#hub-content tbody tr', (r) => r.length);
   assert.equal(squadRows, 18, `squad screen shows ${squadRows}`);
-  console.log('✔ squad screen lists 18 players');
+  // EE-2: POS column carries detailed positions, not just unit families.
+  const posLabels = await page.$$eval('#hub-content tbody tr td:first-child',
+    (cells) => cells.map((c) => c.textContent.trim()));
+  assert.ok(posLabels.every((l) => /^(GK|DR|DC|DL|DM|MR|MC|ML|AMC|ST)(\/|$)/.test(l)),
+    `unexpected position labels: ${posLabels.join(' ')}`);
+  assert.ok(posLabels.some((l) => l.includes('/')), 'no secondary positions shown in squad');
+  console.log('✔ squad screen lists 18 players with detailed positions');
   await shot('03-squad');
 
   await page.click('.nav-btn[data-screen="tactics"]');
   const xiRows = await page.$$eval('[data-swap^="starters"]', (r) => r.length);
   assert.equal(xiRows, 11);
   // Swap two starters and confirm the change sticks.
-  const firstName = await page.$eval('[data-swap="starters:1"] td:nth-child(2)', (el) => el.textContent.trim());
+  // The name is the cell's first text node; status/OOP tags follow in spans.
+  const nameOf = (el) => el.childNodes[0].textContent.trim();
+  const firstName = await page.$eval('[data-swap="starters:1"] td:nth-child(2)', nameOf);
   await page.click('[data-swap="starters:1"]');
   await page.click('[data-swap="starters:2"]');
-  const swappedName = await page.$eval('[data-swap="starters:2"] td:nth-child(2)', (el) => el.textContent.trim());
+  const swappedName = await page.$eval('[data-swap="starters:2"] td:nth-child(2)', nameOf);
   assert.equal(firstName, swappedName, 'swap did not move the player');
+  // EE-2 (POS-10): the displaced starter is flagged out of position.
+  const oopTags = await page.$$eval('[data-swap^="starters"] .status-tag.ban',
+    (els) => els.map((e) => e.textContent.trim()));
+  assert.ok(oopTags.some((t) => t.includes('▸')), `no amber OOP tag after swap: ${oopTags.join(' ')}`);
   // Change formation.
   await page.select('#formation-select', '4-3-3');
   await page.waitForFunction(() =>
     document.querySelectorAll('[data-swap^="starters"]').length === 11);
   const fwCount = await page.$$eval('[data-swap^="starters"]', (rows) =>
-    rows.filter((r) => r.children[0].textContent === 'FW').length);
-  assert.equal(fwCount, 3, '4-3-3 should start 3 forwards');
+    rows.filter((r) => r.children[0].textContent === 'ST').length);
+  assert.equal(fwCount, 3, '4-3-3 should start 3 strikers');
   console.log('✔ tactics: swaps work, formation changes reshape the XI');
   await shot('04-tactics');
 
@@ -111,7 +123,7 @@ try {
   await page.select('#filter-pos', 'MF');
   await page.waitForSelector('[data-bid]');
   const onlyMfs = await page.$$eval('#hub-content tbody tr td:first-child',
-    (cells) => cells.every((c) => c.textContent === 'MF'));
+    (cells) => cells.every((c) => /^(DM|MR|MC|ML|AMC)/.test(c.textContent.trim())));
   assert.ok(onlyMfs, 'position filter leaked other positions');
   const squadBefore = await page.evaluate(() => {
     return document.querySelectorAll('[data-bid]').length;
@@ -155,6 +167,10 @@ try {
   await page.waitForSelector('#matchday:not([hidden])');
   const chipCount = await page.$$eval('#pitch-players .chip', (els) => els.length);
   assert.equal(chipCount, 22);
+  // EE-2: chips sit at formation slot coordinates — 22 distinct spots.
+  const chipSpots = await page.$$eval('#pitch-players .chip',
+    (els) => els.map((e) => `${e.style.left}|${e.style.top}`));
+  assert.equal(new Set(chipSpots).size, 22, 'pitch chips overlap');
 
   const att = await page.$eval('#score-att', (el) => el.textContent);
   assert.match(att, /^Att [\d,]+$/, `attendance missing from scoreboard: "${att}"`);

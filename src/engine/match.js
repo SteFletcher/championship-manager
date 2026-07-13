@@ -19,8 +19,8 @@
 
 import { createRng } from './rng.js';
 import {
-  validateTeam, selectXI, slotPenalty, FORMATIONS, MENTALITIES,
-  POSITIONS, ATTR_MIN, ATTR_MAX,
+  validateTeam, selectXI, familiarity, FORMATIONS, MENTALITIES,
+  POSITIONS, DETAILED_POSITIONS, UNIT_OF, unitOf, ATTR_MIN, ATTR_MAX,
 } from './team.js';
 
 const HOME_ADVANTAGE = 1.12; // multiplier on home midfield/attack effectiveness
@@ -153,7 +153,7 @@ function normalizeSetup(raw) {
   return {
     name: raw.name,
     shortName: raw.shortName ?? raw.name,
-    starters: (raw.players ?? []).map((p) => ({ player: p, slot: p?.pos })),
+    starters: (raw.players ?? []).map((p) => ({ player: p, slot: p?.position ?? p?.pos })),
     bench: raw.bench ?? [],
     formation: raw.formation ?? '4-4-2',
     mentality: raw.mentality ?? 'normal',
@@ -164,10 +164,10 @@ function validateSetup(setup) {
   if (setup.error) return [setup.error];
   const xi = { name: setup.name, players: setup.starters.map((s) => s.player ?? {}) };
   const errors = validateTeam(xi).filter((e) => !e.includes('exactly 1 GK'));
-  const gkSlots = setup.starters.filter((s) => s.slot === 'GK').length;
+  const gkSlots = setup.starters.filter((s) => unitOf(s.slot) === 'GK').length;
   if (gkSlots !== 1) errors.push(`expected exactly 1 GK, got ${gkSlots}`);
   for (const s of setup.starters) {
-    if (s.player && !POSITIONS.includes(s.slot)) {
+    if (s.player && !POSITIONS.includes(s.slot) && !DETAILED_POSITIONS.includes(s.slot)) {
       errors.push(`${s.player.name}: invalid slot ${s.slot}`);
     }
   }
@@ -249,7 +249,7 @@ export class MatchSim {
       lines,
       sharpness,
       slotCounts: { GK: 1, ...Object.fromEntries(['DF', 'MF', 'FW'].map((u) => [
-        u, setup.starters.filter((s) => s.slot === u).length,
+        u, setup.starters.filter((s) => unitOf(s.slot) === u).length,
       ])) },
       yellowCarded: new Set(),
       sentOff: new Set(),
@@ -283,14 +283,14 @@ export class MatchSim {
   #eff(side, entry, attr) {
     const line = this.#line(side, entry.player);
     const conditionFactor = 0.7 + 0.3 * (line.condition / 100);
-    return entry.player[attr] * slotPenalty(entry.player, entry.slot) *
+    return entry.player[attr] * familiarity(entry.player, entry.slot) *
       side.sharpness.get(pid(entry.player)) * conditionFactor;
   }
 
   // Unit strength averaged over the kickoff slot count, so sendings off
   // and unreplaced injuries genuinely weaken the side.
   #unit(side, unit) {
-    const entries = side.onPitch.filter((e) => e.slot === unit);
+    const entries = side.onPitch.filter((e) => unitOf(e.slot) === unit);
     if (unit === 'GK') {
       if (entries.length === 0) return 5;
       return this.#eff(side, entries[0], 'def');
@@ -328,10 +328,11 @@ export class MatchSim {
     return this.#unit(side, 'GK');
   }
 
+  // weights and slots are unit-level; on-pitch slots may be detailed.
   #pick(side, weights, slots) {
-    const pool = side.onPitch.filter((e) => slots.includes(e.slot));
+    const pool = side.onPitch.filter((e) => slots.includes(unitOf(e.slot)));
     if (pool.length === 0) return null;
-    return this.rng.weightedPick(pool.map((e) => ({ item: e, weight: weights[e.slot] ?? 1 })));
+    return this.rng.weightedPick(pool.map((e) => ({ item: e, weight: weights[unitOf(e.slot)] ?? 1 })));
   }
 
   #removeFromPitch(side, player) {
@@ -360,24 +361,36 @@ export class MatchSim {
     if (formation && formation !== side.setup.formation) {
       side.setup.formation = formation;
       const shape = FORMATIONS[formation];
-      const keeper = side.onPitch.filter((e) => e.slot === 'GK');
-      let outfield = side.onPitch.filter((e) => e.slot !== 'GK');
+      const keeper = side.onPitch.filter((e) => unitOf(e.slot) === 'GK');
+      let outfield = side.onPitch.filter((e) => unitOf(e.slot) !== 'GK');
 
       // Fill defence first, then midfield, then attack, preferring
-      // players in their natural position for each unit.
+      // players natural in each unit; within a unit, the shape's detailed
+      // slots go to the most familiar players.
       const remapped = [];
       for (const unit of ['DF', 'MF', 'FW']) {
-        const want = shape[unit];
+        const unitSlots = shape.slots
+          .filter((s) => UNIT_OF[s.pos] === unit)
+          .map((s) => s.pos);
         const naturals = outfield.filter((e) => e.player.pos === unit);
         const attr = unit === 'DF' ? 'def' : unit === 'FW' ? 'atk' : null;
         const score = (e) => (attr ? e.player[attr] : (e.player.atk + e.player.def) / 2);
         const picked = [
           ...naturals.sort((a, b) => score(b) - score(a)),
           ...outfield.filter((e) => e.player.pos !== unit).sort((a, b) => score(b) - score(a)),
-        ].slice(0, Math.min(want, outfield.length));
-        for (const entry of picked) {
-          entry.slot = unit;
-          this.#line(side, entry.player).slot = unit;
+        ].slice(0, Math.min(unitSlots.length, outfield.length));
+        const unassigned = [...picked];
+        for (const slotPos of unitSlots) {
+          if (unassigned.length === 0) break;
+          const better = (a, b) => {
+            const fa = familiarity(a.player, slotPos);
+            const fb = familiarity(b.player, slotPos);
+            return fb > fa || (fb === fa && score(b) > score(a)) ? b : a;
+          };
+          const entry = unassigned.reduce((a, b) => better(a, b));
+          unassigned.splice(unassigned.indexOf(entry), 1);
+          entry.slot = slotPos;
+          this.#line(side, entry.player).slot = slotPos;
           remapped.push(entry);
         }
         outfield = outfield.filter((e) => !picked.includes(e));
@@ -441,12 +454,14 @@ export class MatchSim {
   }
 
   #bestBenchFor(side, slot) {
-    const naturals = side.benchLeft.filter((p) => p.pos === slot);
-    const pool = naturals.length > 0 ? naturals
-      : side.benchLeft.filter((p) => p.pos !== 'GK' || slot === 'GK');
+    const pool = side.benchLeft.filter((p) => p.pos !== 'GK' || unitOf(slot) === 'GK');
     if (pool.length === 0) return null;
-    return pool.reduce((best, p) =>
-      (p.atk + p.def > best.atk + best.def ? p : best));
+    // Most familiar replacement first; ability breaks ties.
+    return pool.reduce((best, p) => {
+      const fp = familiarity(p, slot);
+      const fb = familiarity(best, slot);
+      return fp > fb || (fp === fb && p.atk + p.def > best.atk + best.def) ? p : best;
+    });
   }
 
   #forcedSub(sideKey, side, offPlayer, slot) {
@@ -768,7 +783,7 @@ export class MatchSim {
       let assistId = null;
       if (providers.length > 0 && rng.chance(0.6)) {
         const provider = rng.weightedPick(
-          providers.map((e) => ({ item: e, weight: ASSIST_WEIGHT[e.slot] ?? 1 }))
+          providers.map((e) => ({ item: e, weight: ASSIST_WEIGHT[unitOf(e.slot)] ?? 1 }))
         );
         assistId = pid(provider.player);
         this.#line(att, provider.player).assists++;
@@ -776,7 +791,7 @@ export class MatchSim {
       }
 
       if (keeperEntry) this.#rate(def, keeperEntry.player, RATING.concedeGk);
-      for (const d of def.onPitch.filter((e) => e.slot === 'DF')) {
+      for (const d of def.onPitch.filter((e) => unitOf(e.slot) === 'DF')) {
         this.#rate(def, d.player, RATING.concedeDf);
       }
 
@@ -896,7 +911,7 @@ export class MatchSim {
     for (const [key, side] of Object.entries(this.sides)) {
       const conceded = key === 'home' ? this.score.away : this.score.home;
       if (conceded === 0) {
-        for (const e of side.onPitch.filter((x) => x.slot === 'GK' || x.slot === 'DF')) {
+        for (const e of side.onPitch.filter((x) => ['GK', 'DF'].includes(unitOf(x.slot)))) {
           this.#rate(side, e.player, RATING.cleanSheet);
         }
       }

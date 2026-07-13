@@ -2,7 +2,9 @@
 // All game logic lives in src/engine; this file renders and paces it.
 
 import { TEAMS } from '../src/data/teams.js';
-import { teamRatings, overallRating, FORMATIONS, MENTALITIES } from '../src/engine/team.js';
+import {
+  teamRatings, overallRating, FORMATIONS, MENTALITIES, familiarity, DETAILED_POSITIONS, unitOf,
+} from '../src/engine/team.js';
 import { ability, isAvailable } from '../src/engine/players.js';
 import { Game } from '../src/engine/game.js';
 import { cupRoundName, inCup } from '../src/engine/cup.js';
@@ -45,6 +47,26 @@ function statusTags(p) {
   if (p.banMatches > 0) tags += `<span class="status-tag ban">BAN ${p.banMatches}</span>`;
   if (p.listed) tags += `<span class="status-tag listed">LISTED</span>`;
   return tags;
+}
+
+// Detailed position label, e.g. "MR/MC" when a secondary exists.
+function posLabel(p) {
+  const main = p.position ?? p.pos;
+  return p.secondaries?.length ? `${main}/${p.secondaries.join('/')}` : main;
+}
+
+// Sort key: detailed positions in pitch order, legacy players by unit.
+function posRank(p) {
+  return ['GK', 'DF', 'MF', 'FW'].indexOf(p.pos) * 16 +
+    Math.max(DETAILED_POSITIONS.indexOf(p.position), 0);
+}
+
+// Amber out-of-position tag (POS-10), e.g. "MC ▸ DM" at 80% familiarity.
+function oopTag(player, slot) {
+  const fam = familiarity(player, slot);
+  if (fam >= 1) return '';
+  return ` <span class="status-tag ban" title="familiarity ${Math.round(fam * 100)}%">` +
+    `${player.position ?? player.pos} ▸ ${slot}</span>`;
 }
 
 function bar(value, low = 40, mid = 65) {
@@ -113,7 +135,7 @@ function renderStartScreen() {
 function renderStartSquad(team) {
   $('squad-title').textContent = `Squad — ${team.name}`;
   $('squad-rows').innerHTML = team.players
-    .map((p) => `<tr><td class="pos">${p.pos}</td><td>${esc(p.name)}</td><td>${p.age}</td><td>${p.atk}</td><td>${p.def}</td></tr>`)
+    .map((p) => `<tr><td class="pos">${posLabel(p)}</td><td>${esc(p.name)}</td><td>${p.age}</td><td>${p.atk}</td><td>${p.def}</td></tr>`)
     .join('');
 }
 
@@ -236,12 +258,11 @@ function renderInbox() {
 function renderSquad() {
   const g = state.game;
   const players = [...g.club.players].sort(
-    (a, b) => ['GK', 'DF', 'MF', 'FW'].indexOf(a.pos) - ['GK', 'DF', 'MF', 'FW'].indexOf(b.pos) ||
-      ability(b) - ability(a)
+    (a, b) => posRank(a) - posRank(b) || ability(b) - ability(a)
   );
   const rows = players.map((p) => `
     <tr>
-      <td>${p.pos}</td>
+      <td>${posLabel(p)}</td>
       <td class="left">${esc(p.name)}${statusTags(p)}</td>
       <td>${p.age}</td>
       <td>${p.atk}</td>
@@ -300,12 +321,12 @@ function renderTactics() {
     const avail = isAvailable(p) ? '' : ' <span class="status-tag inj">OUT</span>';
     return `<tr class="clickable ${sel ? 'swap-selected' : ''}" data-swap="${list}:${idx}">
       <td>${label}</td><td class="left">${esc(p.name)}${avail}${extra}</td>
-      <td>${p.pos}</td><td>${p.atk}</td><td>${p.def}</td>
+      <td>${posLabel(p)}</td><td>${p.atk}</td><td>${p.def}</td>
       <td>${bar(p.condition)}</td><td>${p.form.toFixed(1)}</td></tr>`;
   };
 
   const starterRows = lineup.starters.map((s, i) =>
-    row('starters', i, s.slot, s.player, s.slot !== s.player.pos ? ' <span class="status-tag ban">OOP</span>' : '')
+    row('starters', i, s.slot, s.player, oopTag(s.player, s.slot))
   ).join('');
   const benchRows = lineup.bench.map((p, i) => row('bench', i, 'SUB', p)).join('');
   const reserveRows = reserves.map((p, i) => row('reserves', i, '—', p)).join('');
@@ -316,7 +337,7 @@ function renderTactics() {
     .map((m) => `<option ${m === g.tactics.mentality ? 'selected' : ''}>${m}</option>`).join('');
 
   $('hub-content').innerHTML = `<h1>Tactics</h1>
-    <p class="hint">Click two players to swap them. OOP = out of position (plays weaker).</p>
+    <p class="hint">Click two players to swap them. An amber tag (e.g. MC ▸ DM) means out of position — the player contributes less there.</p>
     <div class="panel tactics-controls">
       <label>Formation <select id="formation-select">${formationOpts}</select></label>
       <label>Mentality <select id="mentality-select">${mentalityOpts}</select></label>
@@ -504,7 +525,7 @@ function renderTransfers() {
   };
   const rows = results.map((r) => `
     <tr>
-      <td>${r.player.pos}</td>
+      <td>${posLabel(r.player)}</td>
       <td class="left">${esc(r.player.name)}${statusTags(r.player)}</td>
       <td class="left">${r.club ? esc(r.club) : '<span class="good">Free agent</span>'}</td>
       <td>${r.player.age}</td>${attrCell(r.player, 'atk')}${attrCell(r.player, 'def')}
@@ -733,10 +754,10 @@ function showPreMatch(fixture) {
     `${fixture.type === 'cup' ? `Cup ${fixture.round}` : `League Round ${fixture.round}`} · ` +
     `${fixture.isHome ? 'Home' : 'Away'} to ${opp} · ${g.tactics.formation}, ${g.tactics.mentality}`;
   $('prematch-xi').innerHTML = lineup.starters.map((s) =>
-    `<tr><td class="pos">${s.slot}</td><td>${esc(s.player.name)}</td>
+    `<tr><td class="pos">${s.slot}</td><td>${esc(s.player.name)}${oopTag(s.player, s.slot)}</td>
      <td>${s.player.atk}</td><td>${s.player.def}</td></tr>`).join('');
   $('prematch-bench').innerHTML = lineup.bench.map((p) =>
-    `<tr><td class="pos">${p.pos}</td><td>${esc(p.name)}</td><td>${p.atk}</td><td>${p.def}</td></tr>`).join('') ||
+    `<tr><td class="pos">${posLabel(p)}</td><td>${esc(p.name)}</td><td>${p.atk}</td><td>${p.def}</td></tr>`).join('') ||
     '<tr><td class="empty">Empty bench</td></tr>';
 
   // Scout the opposition.
@@ -747,7 +768,7 @@ function showPreMatch(fixture) {
     : '<span class="dim">no matches yet</span>';
   $('opp-summary').innerHTML =
     `${g.ordinal(report.position)} in Division ${report.division} · Form: ${formStr}<br>` +
-    `Danger man: <b class="gold">${esc(report.dangerMan.name)}</b> (${report.dangerMan.pos})`;
+    `Danger man: <b class="gold">${esc(report.dangerMan.name)}</b> (${posLabel(report.dangerMan)})`;
   $('opp-xi').innerHTML = report.xi.map((s) =>
     `<tr class="${s.player.id === report.dangerMan.id ? 'highlight' : ''}">
       <td class="pos">${s.slot}</td><td>${esc(s.player.name)}</td>
@@ -884,10 +905,26 @@ function ratingBand(rating) {
   return 'star';
 }
 
-const ROW_Y = {
-  away: { GK: 5, DF: 16.5, MF: 29, FW: 41 },
-  home: { GK: 95, DF: 83.5, MF: 71, FW: 59 },
-};
+// Each side occupies its own half of the vertical pitch: home attacks
+// upward from the bottom. Formation coordinates are x 0-100 left→right
+// from the team's own view and y 0-100 own goal→opponent goal (EE-2).
+function chipPlacement(sideKey, { x, y }) {
+  const left = 8 + x * 0.84;
+  return sideKey === 'home'
+    ? { left, top: 95.5 - y * 0.42 }
+    : { left: 100 - left, top: 4.5 + y * 0.42 };
+}
+
+// Hand out the formation's slot coordinates: one queue per position, in
+// shape order. Legacy unit slots or drift (never expected) fall back to
+// the unit line's centre.
+const FALLBACK_Y = { GK: 6, DF: 30, MF: 58, FW: 84 };
+
+function slotCoordFor(queues, slot) {
+  const q = queues[slot];
+  if (q?.length) return q.shift();
+  return { x: 50, y: FALLBACK_Y[unitOf(slot)] ?? 50 };
+}
 
 function renderPitch() {
   const m = state.match;
@@ -895,30 +932,30 @@ function renderPitch() {
   container.innerHTML = '';
   for (const sideKey of ['home', 'away']) {
     const side = m.sim.sides[sideKey];
-    const units = { GK: [], DF: [], MF: [], FW: [] };
-    for (const entry of side.onPitch) units[entry.slot].push(entry);
-    for (const [unit, entries] of Object.entries(units)) {
-      entries.forEach((entry, i) => {
-        const line = side.lines.get(entry.player.id ?? entry.player.name);
-        const x = (100 / (entries.length + 1)) * (i + 1);
-        const chip = document.createElement('div');
-        chip.className = `chip ${sideKey}`;
-        chip.style.left = `${x}%`;
-        chip.style.top = `${ROW_Y[sideKey][unit]}%`;
-        const marks = [];
-        if (line.goals > 0) marks.push(`<span class="mark-goal">${'⚽'.repeat(Math.min(line.goals, 3))}</span>`);
-        if (line.yellow > 0) marks.push('<span class="mark-yellow"></span>');
-        chip.innerHTML = `
-          <span class="chip-marks">${marks.join('')}</span>
-          <span class="chip-rating r-${ratingBand(line.rating)}">${line.rating.toFixed(1)}</span>
-          <span class="chip-name" title="${esc(entry.player.name)}">${esc(surname(entry.player.name))}</span>`;
-        const prev = m.prevGoals.get(line.id) ?? 0;
-        if (line.goals > prev) {
-          m.prevGoals.set(line.id, line.goals);
-          chip.classList.add('scored');
-        }
-        container.appendChild(chip);
-      });
+    const queues = {};
+    for (const s of FORMATIONS[side.setup.formation]?.slots ?? []) {
+      (queues[s.pos] ??= []).push({ x: s.x, y: s.y });
+    }
+    for (const entry of side.onPitch) {
+      const line = side.lines.get(entry.player.id ?? entry.player.name);
+      const { left, top } = chipPlacement(sideKey, slotCoordFor(queues, entry.slot));
+      const chip = document.createElement('div');
+      chip.className = `chip ${sideKey}`;
+      chip.style.left = `${left}%`;
+      chip.style.top = `${top}%`;
+      const marks = [];
+      if (line.goals > 0) marks.push(`<span class="mark-goal">${'⚽'.repeat(Math.min(line.goals, 3))}</span>`);
+      if (line.yellow > 0) marks.push('<span class="mark-yellow"></span>');
+      chip.innerHTML = `
+        <span class="chip-marks">${marks.join('')}</span>
+        <span class="chip-rating r-${ratingBand(line.rating)}">${line.rating.toFixed(1)}</span>
+        <span class="chip-name" title="${esc(entry.player.name)}">${esc(surname(entry.player.name))}</span>`;
+      const prev = m.prevGoals.get(line.id) ?? 0;
+      if (line.goals > prev) {
+        m.prevGoals.set(line.id, line.goals);
+        chip.classList.add('scored');
+      }
+      container.appendChild(chip);
     }
   }
 }
@@ -977,7 +1014,7 @@ function renderSubPanel() {
   onList.innerHTML = side.benchLeft.map((p) => {
     const id = p.id ?? p.name;
     return `<li data-on="${esc(id)}" class="${m.subSel.on === id ? 'selected' : ''}">
-      ${p.pos} ${esc(p.name)}</li>`;
+      ${posLabel(p)} ${esc(p.name)}</li>`;
   }).join('') || '<li class="spent">No substitutes left</li>';
 
   for (const li of offList.querySelectorAll('[data-off]')) {

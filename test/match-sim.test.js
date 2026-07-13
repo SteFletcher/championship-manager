@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MatchSim, simulateMatch } from '../src/engine/match.js';
+import { unitOf } from '../src/engine/team.js';
 import { TEAMS } from '../src/data/teams.js';
 import { makeUniformTeam } from './team.test.js';
 
@@ -299,10 +300,11 @@ test('setTactics changes mentality and formation mid-match with a clean remap', 
   assert.equal(sim.sides.home.setup.mentality, 'defensive');
 
   // Shape is exactly 1 GK / 5 DF / 3 MF / 2 FW with no player lost or duplicated.
+  // On-pitch slots are detailed positions (EE-2); count by unit family.
   const slots = { GK: 0, DF: 0, MF: 0, FW: 0 };
   const ids = new Set();
   for (const e of sim.sides.home.onPitch) {
-    slots[e.slot]++;
+    slots[unitOf(e.slot)]++;
     ids.add(e.player.name);
   }
   assert.deepEqual(slots, { GK: 1, DF: 5, MF: 3, FW: 2 });

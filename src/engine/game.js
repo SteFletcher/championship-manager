@@ -8,7 +8,7 @@
 import { createRng, hashString } from './rng.js';
 import { MatchSim, simulateMatch } from './match.js';
 import { selectXI, overallRating, FORMATIONS, MENTALITIES } from './team.js';
-import { developPlayer, isAvailable, ability } from './players.js';
+import { developPlayer, isAvailable, ability, detailPlayer } from './players.js';
 import { generateFixtures, computeTable } from './league.js';
 import {
   createCup, advanceCup, cupRoundName, cupRoundCount, cupRoundNames, inCup,
@@ -20,12 +20,31 @@ import {
 } from './transfers.js';
 import { buildClubs, FIRST_NAMES, LAST_NAMES } from '../data/teams.js';
 
+// Sequential, additive-only save migrations: MIGRATIONS[n] upgrades a
+// version-n payload to n+1. Each player's derivation stream is seeded from
+// his own identity, so migrating the same payload twice is idempotent.
+function migratePlayerPositions(p) {
+  detailPlayer(createRng(hashString(`${p.id}:${p.name}:pos`)), p);
+}
+
+const MIGRATIONS = {
+  // v6 → v7 (EE-2): detailed positions and secondaries on every player.
+  6: (data) => {
+    for (const club of data.clubs) club.players.forEach(migratePlayerPositions);
+    (data.freeAgents ?? []).forEach(migratePlayerPositions);
+    for (const offer of data.pendingOffers ?? []) {
+      if (offer.player) migratePlayerPositions(offer.player);
+    }
+    data.version = 7;
+  },
+};
+
 const TICKET_PRICE = 14;
 const WIN_MORALE = 8;
 const DRAW_MORALE = 1;
 const LOSS_MORALE = -6;
 const SACK_THRESHOLD = 15;
-const SAVE_VERSION = 6;
+const SAVE_VERSION = 7;
 const JOB_REACH = 15; // how far above your reputation a club will hire
 const SCOUT_FEE = 15000;
 const MASK_HALF_WIDTH = 8; // unscouted attributes show as a range this wide
@@ -1056,7 +1075,9 @@ export class Game {
       wage: 250,
       value: 50000,
     };
-    return player;
+    // Positions detail from a per-player stream (see migratePlayerPositions)
+    // so the main career RNG sequence is untouched.
+    return detailPlayer(createRng(hashString(`${player.id}:${player.name}:pos`)), player);
   }
 
   // --- Tactics & persistence ---------------------------------------------------
@@ -1103,6 +1124,9 @@ export class Game {
 
   static restore(json) {
     const data = typeof json === 'string' ? JSON.parse(json) : json;
+    while (data.version < SAVE_VERSION && MIGRATIONS[data.version]) {
+      MIGRATIONS[data.version](data);
+    }
     if (data.version !== SAVE_VERSION) throw new Error('incompatible save version');
     // Construct a real instance (private methods need the class brand),
     // then overwrite every field with the saved state.

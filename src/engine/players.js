@@ -39,11 +39,96 @@ export function fairValue(player) {
   return Math.max(10000, Math.round(raw / 5000) * 5000);
 }
 
-export function createPlayer(rng, { id, name, pos, atk, def, age }) {
+// --- Detailed positions (EE-2) ---------------------------------------------
+//
+// A player's `position` is a detailed pitch position (see DETAILED_POSITIONS
+// in team.js); `pos` remains the derived unit family so every unit-level
+// consumer keeps working. Detailing draws from its own seeded RNG streams,
+// never the main game/squad streams, so adding it disturbs nothing.
+
+const UNIT_POSITIONS = {
+  GK: ['GK'],
+  DF: ['DR', 'DC', 'DL'],
+  MF: ['DM', 'MR', 'MC', 'ML', 'AMC'],
+  FW: ['ST'],
+};
+
+// A plausible neighbour for each position, used for secondary positions.
+const ADJACENT = {
+  DR: ['DC', 'MR'], DC: ['DM', 'DR'], DL: ['DC', 'ML'],
+  DM: ['DC', 'MC'], MR: ['MC', 'DR'], MC: ['DM', 'AMC'], ML: ['MC', 'DL'],
+  AMC: ['MC', 'ST'], ST: ['AMC'],
+};
+
+// Derive a detailed position from a unit position and attribute profile.
+// DF: centre-backs twice as common as full-backs. MF: strongly attacking
+// profiles become AMC, strongly defensive ones DM, the rest spread wide
+// and central. Deterministic given the rng.
+export function detailPosition(rng, pos, { atk = 50, def = 50 } = {}) {
+  if (pos === 'GK') return 'GK';
+  if (pos === 'FW') return 'ST';
+  if (pos === 'DF') {
+    return rng.weightedPick([
+      { item: 'DC', weight: 2 }, { item: 'DR', weight: 1 }, { item: 'DL', weight: 1 },
+    ]);
+  }
+  if (atk - def > 12) return 'AMC';
+  if (def - atk > 12) return 'DM';
+  return rng.weightedPick([
+    { item: 'MC', weight: 2 }, { item: 'MR', weight: 1 }, { item: 'ML', weight: 1 },
+  ]);
+}
+
+export function maybeSecondary(rng, position) {
+  if (position === 'GK' || !rng.chance(0.35)) return [];
+  const options = ADJACENT[position] ?? [];
+  return options.length > 0 ? [rng.pick(options)] : [];
+}
+
+// Ensure a player carries position/secondaries, deriving them when absent.
+// Used by squad generation, save migration, and youth intake.
+export function detailPlayer(rng, player) {
+  if (!player.position) {
+    player.position = detailPosition(rng, player.pos, player);
+    player.secondaries = maybeSecondary(rng, player.position);
+  } else {
+    player.secondaries ??= [];
+  }
+  return player;
+}
+
+// Assign detailed positions across a whole squad. Within each unit the
+// first-choice players follow a fixed template that guarantees every
+// 4-4-2 slot has a natural (POS-06); depth players are detailed by
+// profile. Players that already carry a detailed position keep it.
+const UNIT_TEMPLATES = {
+  GK: ['GK', 'GK'],
+  DF: ['DR', 'DC', 'DC', 'DL'],
+  MF: ['MR', 'MC', 'MC', 'ML'],
+  FW: ['ST', 'ST'],
+};
+
+export function assignDetailedPositions(rng, players) {
+  for (const unit of Object.keys(UNIT_POSITIONS)) {
+    const template = [...UNIT_TEMPLATES[unit]];
+    for (const p of players.filter((q) => q.pos === unit)) {
+      if (p.position) {
+        p.secondaries ??= [];
+        continue;
+      }
+      p.position = template.shift() ?? detailPosition(rng, p.pos, p);
+      p.secondaries = maybeSecondary(rng, p.position);
+    }
+  }
+  return players;
+}
+
+export function createPlayer(rng, { id, name, pos, position, atk, def, age }) {
   const player = {
     id,
     name,
     pos,
+    ...(position ? { position, secondaries: [] } : {}),
     atk,
     def,
     age,

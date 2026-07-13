@@ -2,7 +2,8 @@
 // so the same players (and ratings) appear on every new game.
 
 import { createRng, hashString } from '../engine/rng.js';
-import { createPlayer } from '../engine/players.js';
+import { createPlayer, assignDetailedPositions } from '../engine/players.js';
+import { DETAILED_POSITIONS, unitOf } from '../engine/team.js';
 import { SQUADS_1995 } from './squads1995.js';
 
 export const FIRST_NAMES = [
@@ -82,10 +83,14 @@ function generateSquad(club) {
   for (const [pos, count] of SQUAD_SHAPE) {
     for (let i = 0; i < count; i++) {
       let name;
-      
-      const realIndex = realPlayers.findIndex(p => p[1] === pos);
+      let position; // real squads may pin a detailed position, e.g. 'DR'
+
+      const realIndex = realPlayers.findIndex((p) => unitOf(p[1]) === pos);
       if (realIndex !== -1) {
         name = realPlayers[realIndex][0];
+        if (DETAILED_POSITIONS.includes(realPlayers[realIndex][1])) {
+          position = realPlayers[realIndex][1];
+        }
         realPlayers.splice(realIndex, 1);
       } else {
         do {
@@ -117,6 +122,7 @@ function generateSquad(club) {
           id: `${club.shortName}-${index++}`,
           name,
           pos,
+          position,
           atk: Math.min(99, Math.max(1, atk)),
           def: Math.min(99, Math.max(1, def)),
           age: rng.int(17, 33),
@@ -124,7 +130,9 @@ function generateSquad(club) {
       );
     }
   }
-  return players;
+  // Detailed positions draw from a parallel seeded stream so their
+  // introduction leaves every generated name and attribute untouched.
+  return assignDetailedPositions(createRng(hashString(`${club.name}#positions`)), players);
 }
 
 // Starting balance and transfer budget scale with stature.

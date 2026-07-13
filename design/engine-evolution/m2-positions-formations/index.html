@@ -189,7 +189,7 @@ TACTICS — pitch view places players at slot coordinates
           <tr><td>familiarity ladder</td><td>unit</td><td>All five grades returned for constructed player/slot pairs; monotone (natural ≥ secondary ≥ unit ≥ cross ≥ GK-mismatch).</td></tr>
           <tr><td>selectXI fills every slot</td><td>unit</td><td>All formations produce 11 assigned slots; naturals preferred; injured/banned excluded; deterministic across runs.</td></tr>
           <tr><td>legacy pos derived</td><td>unit</td><td>Every generated/migrated player: <code>pos === UNIT_OF[position]</code>; <code>validateTeam</code> untouched consumers pass.</td></tr>
-          <tr><td>generation balance</td><td>unit</td><td>All 24 club squads: exactly 2 GK, every 4-4-2 slot coverable by a natural.</td></tr>
+          <tr><td>generation balance</td><td>unit</td><td>All 40 club squads: exactly 2 GK, every 4-4-2 slot coverable by a natural.</td></tr>
           <tr><td>migration determinism</td><td>unit</td><td>Same vN save migrated twice → identical positions/secondaries; a full old-format career save loads and plays a week.</td></tr>
           <tr><td>familiarity costs goals</td><td>statistical</td><td>An XI of naturals beats the same XI shuffled cross-unit (~300 sims, win rate &gt; 60%).</td></tr>
           <tr><td>invariants hold</td><td>statistical</td><td>EE-1 bands all pass post-change; goldens re-pinned once with reason.</td></tr>

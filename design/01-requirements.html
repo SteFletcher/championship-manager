@@ -40,7 +40,7 @@
 
       <h2>1. Purpose &amp; Scope</h2>
       <p>Champman is a single-player football-management career game that runs entirely
-      in the browser. The player assumes the role of a manager at one of 24 fictional
+      in the browser. The player assumes the role of a manager at one of 40 real 1995/96
       clubs and is responsible for squad selection, tactics, transfers, finances,
       stadium development, and meeting board expectations across full seasons of league
       and cup football.</p>
@@ -48,7 +48,7 @@
         <span class="label">In scope</span>
         <ul>
           <li>Career mode with a single human-managed club and 23 AI-managed clubs.</li>
-          <li>Two 12-club divisions with promotion/relegation and a 24-club knockout cup.</li>
+          <li>Two 20-club divisions with promotion/relegation and a 40-club knockout cup.</li>
           <li>Resumable minute-by-minute match simulation with live tactical management.</li>
           <li>Squad, tactics, transfers, finances, scouting, stadium, board, and news systems.</li>
           <li>Deterministic save/load to localStorage.</li>
@@ -81,9 +81,9 @@
       <table class="grid">
         <thead><tr><th>ID</th><th>Requirement</th><th>Acceptance criterion</th></tr></thead>
         <tbody>
-          <tr><td><code>CAR-01</code></td><td>The player shall choose a manager name and one of 24 clubs to begin a career.</td><td>New game places the chosen club under human control; all others AI.</td></tr>
-          <tr><td><code>CAR-02</code></td><td>The world shall contain two divisions of 12 clubs with deterministic squads.</td><td>24 clubs; same club always yields the same 18 players across new games.</td></tr>
-          <tr><td><code>CAR-03</code></td><td>The season shall be a calendar of league rounds interleaved with cup rounds.</td><td>22 league rounds + 5 cup days = 27 calendar weeks for a 12-club division.</td></tr>
+          <tr><td><code>CAR-01</code></td><td>The player shall choose a manager name and one of 40 clubs to begin a career.</td><td>New game places the chosen club under human control; all others AI.</td></tr>
+          <tr><td><code>CAR-02</code></td><td>The world shall contain two divisions of 20 clubs with deterministic squads.</td><td>40 clubs; same club always yields the same 18 players across new games.</td></tr>
+          <tr><td><code>CAR-03</code></td><td>The season shall be a calendar of league rounds interleaved with cup rounds.</td><td>38 league rounds + 6 cup days = 44 calendar weeks for a 20-club division.</td></tr>
           <tr><td><code>CAR-04</code></td><td>Two clubs shall be promoted and two relegated each season.</td><td>Top 2 of Division 2 swap divisions with bottom 2 of Division 1.</td></tr>
           <tr><td><code>CAR-05</code></td><td>Board confidence shall track performance and trigger sacking below a threshold.</td><td>Confidence &lt; 15 → manager sacked; job market opens.</td></tr>
           <tr><td><code>CAR-06</code></td><td>A sacked manager shall be able to take a job at a lesser club.</td><td>Up to 2 reachable clubs offered; accepting continues the career mid-season.</td></tr>
@@ -197,7 +197,7 @@
       <h2>5. Constraints &amp; Assumptions</h2>
       <ul>
         <li><strong>Single-player only.</strong> No network multiplayer or shared state.</li>
-        <li><strong>Fictional data.</strong> All clubs and players are invented; no licensing.</li>
+        <li><strong>Real data.</strong> Clubs and some players use real 1995/96 data.</li>
         <li><strong>Browser-local storage.</strong> Saves do not leave the device; clearing storage loses the career.</li>
         <li><strong>ES module browser target.</strong> Requires a browser supporting native ES modules (all evergreen browsers).</li>
         <li><strong>One human club.</strong> The other 23 clubs are always AI-managed; there is no hotseat mode.</li>

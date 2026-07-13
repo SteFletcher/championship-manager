@@ -107,7 +107,7 @@
 └──────────────────────────────────────────────────────────────────┘
                   ▲
           ┌────────────────┐
-          │ src/data/      │  24 clubs, deterministic squad
+          │ src/data/      │  40 clubs, deterministic squad
           │  teams.js      │  generation from club name
           └────────────────┘
 </pre>
@@ -126,7 +126,7 @@
           <tr><td><code>season.js</code></td><td>34</td><td>Calendar merging league + cup weeks</td><td><code>buildCalendar</code>, <code>monthName</code></td></tr>
           <tr><td><code>transfers.js</code></td><td>73</td><td>Valuations, negotiation, AI interest</td><td><code>askingPrice</code>, <code>evaluateBid</code>, <code>wageDemand</code>, <code>aiInterest</code></td></tr>
           <tr><td><code>game.js</code></td><td>1122</td><td>Career orchestrator &amp; state owner</td><td><code>Game</code> class</td></tr>
-          <tr><td><code>teams.js</code> (data)</td><td>136</td><td>24 clubs + deterministic squad generation</td><td><code>TEAMS</code>, <code>buildClubs</code>, <code>clubFinances</code></td></tr>
+          <tr><td><code>teams.js</code> (data)</td><td>136</td><td>40 clubs + deterministic squad generation</td><td><code>TEAMS</code>, <code>buildClubs</code>, <code>clubFinances</code></td></tr>
           <tr><td><code>app.js</code> (UI)</td><td>1121</td><td>UI controller</td><td>— (side-effect on import)</td></tr>
         </tbody>
       </table>
@@ -252,7 +252,7 @@ User clicks "Continue ▸"
           <tr><td>Match model</td><td>Stateful resumable object</td><td>Pure <code>simulate(home,away)→result</code></td><td>Live pause/subs/tactics need mutable mid-match state</td></tr>
           <tr><td>RNG</td><td>mulberry32, single instance</td><td>Per-module RNGs or <code>Math.random</code></td><td>Replayable careers; serializable state</td></tr>
           <tr><td>Save format</td><td>Flat JSON snapshot</td><td>Event log / delta store</td><td>Simplicity; small enough for localStorage</td></tr>
-          <tr><td>Squad data</td><td>Generated from club name hash</td><td>Hand-authored squads</td><td>24×18 players for free; deterministic &amp; compact</td></tr>
+          <tr><td>Squad data</td><td>Generated from club name hash</td><td>Hand-authored squads</td><td>40×18 players for free; deterministic &amp; compact</td></tr>
         </tbody>
       </table>
 

@@ -55,7 +55,7 @@
           ▼                ▼                       ▼
     ┌──────────┐     ┌───────────┐          ┌────────────┐
     │  Club    │1───*│  Player   │          │  InboxItem │
-    │  (24)    │     │  (18/club)│          │  (≤120)    │
+    │  (40)    │     │  (18/club)│          │  (≤120)    │
     └────┬─────┘     └─────┬─────┘          └────────────┘
          │ *               │1
          │                 │ *
@@ -84,7 +84,7 @@
           <tr><td><code>managerName</code></td><td>string</td><td>Free text, max 30 chars at entry.</td></tr>
           <tr><td><code>clubName</code></td><td>string</td><td>The human club's name; key into <code>clubs</code>.</td></tr>
           <tr><td><code>rngState</code></td><td>number (u32)</td><td>Serialized RNG state — the determinism key.</td></tr>
-          <tr><td><code>clubs</code></td><td>Club[]</td><td>All 24 clubs, including the human one.</td></tr>
+          <tr><td><code>clubs</code></td><td>Club[]</td><td>All 40 clubs, including the human one.</td></tr>
           <tr><td><code>freeAgents</code></td><td>Player[]</td><td>Released/retired-replaced players; capped at 40.</td></tr>
           <tr><td><code>seasonIndex</code></td><td>number</td><td>0-based season counter.</td></tr>
           <tr><td><code>week</code></td><td>number</td><td>0-based week within the current season's calendar.</td></tr>
@@ -233,11 +233,11 @@
       <table class="grid">
         <thead><tr><th>Relationship</th><th>Cardinality</th><th>Invariant</th></tr></thead>
         <tbody>
-          <tr><td>Game → Club</td><td>1 : 24</td><td>Exactly 12 per division; fixed for the career.</td></tr>
+          <tr><td>Game → Club</td><td>1 : 40</td><td>Exactly 20 per division; fixed for the career.</td></tr>
           <tr><td>Club → Player</td><td>1 : 18 (start), ≥16 (always)</td><td>Youth intake refills below 16.</td></tr>
           <tr><td>Club → GK</td><td>≥2</td><td>Squad-protection rule (<code>MIN_GKS</code>).</td></tr>
           <tr><td>Match → StatLine</td><td>1 : 16–22</td><td>11 starters + up to 5 bench, per side.</td></tr>
-          <tr><td>Calendar → entries</td><td>1 : 27 (12-club div)</td><td>22 league + 5 cup days.</td></tr>
+          <tr><td>Calendar → entries</td><td>1 : 44 (20-club div)</td><td>38 league + 6 cup days.</td></tr>
           <tr><td>Inbox → items</td><td>≤120</td><td>Truncated on insert.</td></tr>
           <tr><td>Free agents</td><td>≤40</td><td>Truncated at season end.</td></tr>
         </tbody>

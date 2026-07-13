@@ -171,14 +171,14 @@ playMinute():
       <code>points → goalDiff → goalsFor → name</code>. Three points for a win, one for a draw.</p>
 
       <h3>3.3 Cup (<code>cup.js</code>)</h3>
-      <p>Single-leg knockout spanning all 24 clubs. The opening round reduces the field to the
-      largest power of two below the entrant count (24 → 16) via byes drawn with Fisher-Yates
+      <p>Single-leg knockout spanning all 40 clubs. The opening round reduces the field to the
+      largest power of two below the entrant count (40 → 32) via byes drawn with Fisher-Yates
       using the shared RNG. Ties then halve each round to the final. Round names map by survivor
       count (Final, Semi, Quarter, Round of 16, First Round). <code>advanceCup()</code> records
       winners and redraws; <code>inCup()</code> tests liveness.</p>
       <div class="callout blue">
         <span class="label">Power-of-two reduction</span>
-        <p><code>openingTarget(n) = 2^floor(log2(n−1))</code>. So 12→8, 16→8, 24→16. This keeps
+        <p><code>openingTarget(n) = 2^floor(log2(n−1))</code>. So 12→8, 16→8, 24→16, 40→32. This keeps
         every subsequent round a clean halving, avoiding awkward byes deep in the bracket.</p>
       </div>
 

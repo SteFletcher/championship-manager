@@ -11,7 +11,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-1</span>
     <span class="spacer"></span>
-    <span class="meta">Milestone design · buildable</span>
+    <span class="meta">Milestone design · shipped</span>
   </header>
 
   <main class="wrap">
@@ -34,6 +34,14 @@
     <article class="doc">
       <h1>EE-1 · Extensible Core &amp; Regression Armour</h1>
       <p class="subtitle">Refactor the match simulator into a phase pipeline, make every event machine-readable, and pin current behaviour so the rest of the track cannot silently break the game</p>
+
+      <div class="callout gold">
+        <span class="label">✅ Shipped 2026-07-12</span>
+        <p>Built as designed (commit <code>3d6ab4b</code>): the minute loop runs as a named
+        phase pipeline, every event carries a structured <code>data</code> payload, and the
+        golden-master fixtures + statistical invariant suite now guard every later milestone.
+        Regeneration via <code>npm run golden:update</code>.</p>
+      </div>
 
       <h2>1. Purpose</h2>
       <p>Every later milestone rewrites part of the minute loop. Today that loop is one

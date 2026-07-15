@@ -11,7 +11,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb"><a href="../../index.html">Design</a> › <a href="../../11-engine-evolution.html">11 · Engine Evolution</a> › EE-3</span>
     <span class="spacer"></span>
-    <span class="meta">Milestone design · buildable</span>
+    <span class="meta">Milestone design · shipped</span>
   </header>
 
   <main class="wrap">
@@ -34,6 +34,15 @@
     <article class="doc">
       <h1>EE-3 · Attribute Expansion</h1>
       <p class="subtitle">From two composite numbers to eight attributes the engine actually consults — with atk/def surviving as derived blends so nothing untouched breaks</p>
+
+      <div class="callout gold">
+        <span class="label">✅ Shipped 2026-07-13 · save v8</span>
+        <p>Built as designed (commit <code>41ddd3f</code>): eight real attributes generated
+        per position profile, <code>atk</code>/<code>def</code> recomputed as derived
+        composites on every attribute write, engine decision points reading specific
+        attributes via <code>attrOf()</code> with exact legacy fallbacks, attribute grids in
+        the UI, and deterministic v7→v8 save migration. Suite at 194 tests.</p>
+      </div>
 
       <h2>1. Purpose</h2>
       <p>FM's tactical depth rests on attributes that <em>mean something distinct</em>: a

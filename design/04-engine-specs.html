@@ -62,7 +62,14 @@
       </div>
 
       <h2>2. Match Simulation Engine</h2>
-      <p>Source: <code>src/engine/match.js</code> (867 LOC). The most complex subsystem.</p>
+      <p>Source: <code>src/engine/match.js</code> (~990 LOC). The most complex subsystem.
+      Since EE-1 the minute loop is an ordered pipeline of named phases sharing a minute
+      context (<code>halfTimeWhistle → aiPolicies → possession → buildUp → discipline →
+      injuries → chanceCreation → fatigue → snapshot → clock</code>), pinned by
+      golden-master fixtures and a statistical invariant suite; since EE-3 its decision
+      points read the eight real attributes via <code>attrOf()</code>. See
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a> and the EE-1/EE-3
+      milestone designs for the deltas.</p>
 
       <h3>2.1 Public API</h3>
       <pre><code>class MatchSim {
@@ -88,31 +95,36 @@ simulateMatch(home, away, options)   // convenience: one-shot → MatchResult</c
       <h3>2.3 The Per-Minute Loop</h3>
       <div class="diagram">
 <pre>
-playMinute():
-  minute++
-  if minute == 46: log half-time
-  for each side: #aiTacticsPolicy ; #autoSubPolicy
-  resolve possession (midfield battle × home boost)
-  quiet build-up: passes (3–8) + maybe a tackle  → feeds live ratings
-  fouls &amp; cards (per side, 11% chance):
-      straight red 0.6% · yellow 11% · second-yellow → red
-  injuries (0.18% per side/min, weighted by injuryProne &amp; low condition):
-      AI auto-subs immediately; user side left short until manager reacts
-  chance resolution (BASE_CHANCE_PROB × mentality mods × atk/def ratio):
-      shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3)
-      miss (42%−atk×0.15%) · block (22%) · on-target → goal vs save
-      assist awarded 60% (ASSIST_WEIGHT MF=2, FW=1.5, DF=0.5)
-  condition decay (GK 0.08/min, others 0.30/min)
-  push timeline snapshot
-  if minute ≥ finalMinute: #endStage (ET? shootout? complete)
+playMinute() — phase pipeline (EE-1):
+  halfTimeWhistle   if minute == 46: log half-time
+  aiPolicies        for each side: #aiTacticsPolicy ; #autoSubPolicy
+  possession        resolve possession (midfield battle × home boost)
+  buildUp           quiet build-up: passes (3–8) + maybe a tackle → feeds live ratings
+  discipline        fouls &amp; cards (per side, 11% chance):
+                        straight red 0.6% · yellow 11% · second-yellow → red
+  injuries          0.18% per side/min, weighted by injuryProne &amp; low condition:
+                        AI auto-subs immediately; user side left short until manager reacts
+  chanceCreation    BASE_CHANCE_PROB × mentality mods × attack/defence ratio:
+                        shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3)
+                        miss (42%−finishing×0.15%) · block (22%) ·
+                        on-target → goal prob = finishing / (finishing + keeper×4)
+                        assist awarded 60% (ASSIST_WEIGHT MF=2, FW=1.5, DF=0.5)
+  fatigue           condition decay (GK 0.08/min, others stamina-scaled ~0.30/min)
+  snapshot          push timeline snapshot
+  clock             if minute ≥ finalMinute: #endStage (ET? shootout? complete)
 </pre>
       </div>
 
       <h3>2.4 Strength Model</h3>
       <p>Unit strength is averaged over the players occupying each slot, using effective
-      contribution:</p>
-      <pre><code>#eff(side, entry, attr) = player[attr]
-                       × slotPenalty(player, slot)   // 1.0 natural, 0.75 OOP, 0.5 GK mismatch
+      contribution. Since EE-3 the base is <code>unitContribution(player, unit)</code> — an
+      attribute blend per unit (keepers: handling/reflexes; defence: tackling/positioning;
+      midfield: passing-led with positioning, tackling, pace; attack: finishing/pace) — and since EE-2
+      the positional multiplier is the familiarity ladder:</p>
+      <pre><code>#eff(side, entry, base) = unitContribution(player, unit)
+                       × familiarity(player, slot)   // 1.0 natural · 0.9 secondary ·
+                                                     // 0.8 same-unit · 0.65 cross-unit ·
+                                                     // 0.4 GK mismatch
                        × sharpness                   // morale + form + consistency noise
                        × (0.7 + 0.3 × condition/100)</code></pre>
       <p>Headcount matters with diminishing returns: <code>(slotCount / baseline)^exponent</code>,
@@ -156,8 +168,9 @@ playMinute():
       <h3>2.7 Knockout Resolution</h3>
       <p>When <code>knockout: true</code> and level at 90+stoppage, 30 minutes of extra time
       (plus 1–2 min stoppage) are appended. If still level, a best-of-5 penalty shootout runs,
-      finishing early once decided; sudden death follows if needed. Penalty conversion:
-      <code>clamp(0.76 + (taker.atk − oppKeeper.def) × 0.0015, 0.55, 0.92)</code>.</p>
+      finishing early once decided; sudden death follows if needed. Penalty conversion
+      (attribute-driven since EE-3):
+      <code>clamp(0.76 + (taker.finishing − oppKeeper.reflexes) × 0.0015, 0.55, 0.92)</code>.</p>
 
       <h2>3. League &amp; Cup Subsystem</h2>
 
@@ -305,7 +318,7 @@ playMinute():
           <tr><td><code>MASK_HALF_WIDTH</code></td><td>8</td><td>Attribute estimate range</td></tr>
           <tr><td><code>TICKET_PRICE</code></td><td>£14</td><td>Per attendee gate</td></tr>
           <tr><td><code>EXPANSION_COST_PER_SEAT</code></td><td>£220</td><td>Stadium build cost</td></tr>
-          <tr><td><code>SAVE_VERSION</code></td><td>6</td><td>Persistence schema version</td></tr>
+          <tr><td><code>SAVE_VERSION</code></td><td>8</td><td>Persistence schema version (v7: detailed positions · v8: eight attributes)</td></tr>
           <tr><td><code>RETIREMENT_AGE</code></td><td>34</td><td>60% retire chance at/above</td></tr>
         </tbody>
       </table>

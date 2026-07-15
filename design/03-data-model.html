@@ -145,8 +145,11 @@
         <tbody>
           <tr><td><code>id</code></td><td>string</td><td><code>&lt;SHORT&gt;-&lt;index&gt;</code> or <code>&lt;SHORT&gt;-Y&lt;n&gt;</code> for youth.</td></tr>
           <tr><td><code>name</code></td><td>string</td><td>Unique within a club; drawn from first/last name pools.</td></tr>
-          <tr><td><code>pos</code></td><td>'GK'|'DF'|'MF'|'FW'</td><td>Natural position.</td></tr>
-          <tr><td><code>atk</code>, <code>def</code></td><td>1–99</td><td>Headline attributes.</td></tr>
+          <tr><td><code>position</code></td><td>GK·DR·DC·DL·DM·MR·MC·ML·AMC·ST</td><td>Detailed pitch position (EE-2).</td></tr>
+          <tr><td><code>secondaries</code></td><td>position[]</td><td>Adjacent positions played at 0.8 familiarity (EE-2).</td></tr>
+          <tr><td><code>pos</code></td><td>'GK'|'DF'|'MF'|'FW'</td><td>Unit family, derived from <code>position</code>.</td></tr>
+          <tr><td>attributes</td><td>1–99 each</td><td><code>passing</code>, <code>finishing</code>, <code>tackling</code>, <code>positioning</code>, <code>pace</code>, <code>stamina</code>; keepers add <code>handling</code>, <code>reflexes</code> (EE-3).</td></tr>
+          <tr><td><code>atk</code>, <code>def</code></td><td>1–99</td><td>Derived composites, recomputed on any attribute write; still drive valuation and UI tables.</td></tr>
           <tr><td><code>age</code></td><td>number</td><td>17–33 at creation; increments each season.</td></tr>
           <tr><td><code>consistency</code></td><td>1–99</td><td><strong>Hidden.</strong> Widens per-match variance.</td></tr>
           <tr><td><code>injuryProne</code></td><td>1–99</td><td><strong>Hidden.</strong> Weights injury victim selection.</td></tr>
@@ -166,7 +169,10 @@
         <span class="label">Ability &amp; valuation</span>
         <p><code>ability(player)</code> is the headline number: pure <code>def</code> for GKs,
         0.8/0.2 def/atk for DF, 0.8/0.2 atk/def for FW, and the mean for MF. It drives wages,
-        values, AI interest, and XI selection. <code>ageFactor</code> ramps 0.75 → 1.0 across the
+        values, AI interest, and XI selection. Since EE-3, <code>atk</code>/<code>def</code>
+        are themselves blends of the eight real attributes (e.g. <code>atk</code> =
+        0.35·finishing + 0.30·passing + 0.20·pace + 0.15·positioning), so ability flows from
+        the full profile. <code>ageFactor</code> ramps 0.75 → 1.0 across the
         peak window (24–28) then fades 0.13/year, so a 33-year-old star is worth far less than
         a 26-year-old of identical ability.</p>
       </div>
@@ -248,7 +254,8 @@
       <ul>
         <li>Exactly 11 players.</li>
         <li>Exactly one GK.</li>
-        <li>Every position is one of <code>GK/DF/MF/FW</code>.</li>
+        <li>Every unit family (<code>pos</code>) is one of <code>GK/DF/MF/FW</code>;
+        detailed positions come from the ten-position set (EE-2).</li>
         <li><code>atk</code> and <code>def</code> are finite and within [1, 99].</li>
         <li>No duplicate player names within the team.</li>
       </ul>

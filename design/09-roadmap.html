@@ -11,7 +11,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb"><a href="index.html">Design</a> › 09 · Roadmap</span>
     <span class="spacer"></span>
-    <span class="meta">Forward · v0.2</span>
+    <span class="meta">Forward · v0.3 · updated 2026-07-15</span>
   </header>
 
   <main class="wrap">
@@ -87,14 +87,46 @@
           <p>Sacking opens a job market at lesser clubs; strong seasons attract poach offers
           from bigger clubs; reputation tracks trophies, promotions, and failures.</p>
         </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">2026-07-12</span></div>
+          <h3>Authentic 1995/96 English world data</h3>
+          <p>The 40 clubs are now the real 1995/96 Premier League and Division One, and
+          every club fields its genuine 18-man period squad (Cantona, Shearer, Le Tissier…)
+          from <code>squads1995.js</code>, with attributes still generated deterministically
+          from club tier.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">EE-1 · 2026-07-12</span></div>
+          <h3>Extensible match-engine core &amp; regression armour</h3>
+          <p>The minute loop is a named phase pipeline; every event carries structured data;
+          golden-master fixtures and a statistical invariant suite pin behaviour. First
+          milestone of the <a href="11-engine-evolution.html">Engine Evolution track</a>.</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">EE-2 · 2026-07-13</span></div>
+          <h3>Ten detailed positions &amp; formation geometry</h3>
+          <p>GK/DR/DC/DL/DM/MR/MC/ML/AMC/ST with secondary positions and a familiarity
+          ladder replacing the binary out-of-position penalty; formations are slot lists
+          with pitch coordinates; v6 saves migrate deterministically (save v7).</p>
+        </div>
+        <div class="phase">
+          <div class="ph-head">DELIVERED <span class="stat-pill">EE-3 · 2026-07-13</span></div>
+          <h3>Eight real attributes drive the engine</h3>
+          <p>Passing, finishing, tackling, positioning, pace, stamina, plus handling and
+          reflexes for keepers. <code>atk</code>/<code>def</code> survive as derived
+          composites; shot resolution, penalties, and keeper duels read the specific
+          attribute (save v8).</p>
+        </div>
       </div>
 
       <h2>2. Near-Term Horizons</h2>
       <p>High-impact, lower-effort features that close loops the current systems already opened.
       Each of these now has a full buildable specification — requirements, engine design,
       data-model deltas, UI wireframes, and test plan — in
-      <a href="10-horizon1-specs.html">10 · Horizon 1 Specs</a>
-      <a href="11-engine-evolution.html">11 · Engine Evolution</a>.</p>
+      <a href="10-horizon1-specs.html">10 · Horizon 1 Specs</a>. In parallel, the
+      <a href="11-engine-evolution.html">Engine Evolution track</a> is underway: three of its
+      seven milestones (EE-1 core, EE-2 positions, EE-3 attributes) have shipped, with EE-4
+      (per-player instructions) next.</p>
       <div class="timeline">
         <div class="phase future">
           <div class="ph-head">HORIZON 1 · NEAR <span class="stat-pill">low–medium effort</span></div>

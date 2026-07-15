@@ -12,7 +12,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb">Design Documentation</span>
     <span class="spacer"></span>
-    <span class="meta">v0.2 · reverse-engineered 2026-07-11</span>
+    <span class="meta">v0.3 · updated 2026-07-15</span>
   </header>
 
   <main class="wrap">
@@ -47,10 +47,10 @@
       </div>
 
       <div class="stats">
-        <div class="stat"><span class="num">~6,250</span><span class="lbl">Lines of code</span></div>
-        <div class="stat"><span class="num">10</span><span class="lbl">Engine modules</span></div>
-        <div class="stat"><span class="num">40</span><span class="lbl">Clubs · 2 divisions</span></div>
-        <div class="stat"><span class="num">148</span><span class="lbl">Automated tests</span></div>
+        <div class="stat"><span class="num">~5,700</span><span class="lbl">Lines of app code</span></div>
+        <div class="stat"><span class="num">11</span><span class="lbl">Engine + data modules</span></div>
+        <div class="stat"><span class="num">40</span><span class="lbl">Real 1995/96 clubs</span></div>
+        <div class="stat"><span class="num">194</span><span class="lbl">Automated tests</span></div>
         <div class="stat"><span class="num">0</span><span class="lbl">Build steps</span></div>
       </div>
 
@@ -121,7 +121,8 @@
       <h2>Product at a Glance</h2>
       <div class="callout blue">
         <span class="label">Elevator pitch</span>
-        <p>Take charge of one of 40 clubs across two divisions and manage squads, tactics,
+        <p>Take charge of one of the 40 real 1995/96 English clubs — genuine period squads
+        across the Premier League and Division One — and manage squads, tactics,
         transfers, finances and the board across full seasons of league and cup football —
         all in the browser, with a resumable minute-by-minute match engine you can pause
         to make substitutions and tactical changes. No build step, no backend; games
@@ -136,11 +137,11 @@
           <tr><td>Platform</td><td>Any modern browser (ES modules, no transpilation)</td></tr>
           <tr><td>Runtime stack</td><td>Vanilla JS (ES2020+), HTML, CSS — zero dependencies at runtime</td></tr>
           <tr><td>Dev dependencies</td><td><code>puppeteer-core</code> (E2E smoke only), <code>node --test</code></td></tr>
-          <tr><td>World size</td><td>40 clubs · 2 divisions of 20 · 40-club knockout cup</td></tr>
-          <tr><td>Squad model</td><td>18 players per club · 4 positions · 1–99 attributes</td></tr>
-          <tr><td>Persistence</td><td>localStorage, JSON, <code>SAVE_VERSION 6</code></td></tr>
+          <tr><td>World size</td><td>40 real 1995/96 English clubs · 2 divisions of 20 · 40-club knockout cup</td></tr>
+          <tr><td>Squad model</td><td>18 real period players per club · 10 detailed positions with familiarity · 8 attributes (1–99)</td></tr>
+          <tr><td>Persistence</td><td>localStorage, JSON, <code>SAVE_VERSION 8</code>, additive migrations from v6</td></tr>
           <tr><td>Determinism</td><td>Single seeded mulberry32 RNG; identical seed → identical career</td></tr>
-          <tr><td>Test suite</td><td>148 engine/game tests (node:test) + 1 puppeteer browser smoke</td></tr>
+          <tr><td>Test suite</td><td>194 engine/game tests (node:test) incl. golden masters &amp; statistical invariants + 1 puppeteer browser smoke</td></tr>
         </tbody>
       </table>
 
@@ -161,10 +162,18 @@
         decision, that decision is documented as a requirement or design choice. The
         roadmap is the only forward-looking section; everything else describes what
         <em>is</em>.</p>
+        <p><strong>Status update (2026-07-15).</strong> Since the package was written, the
+        world data moved to the real 1995/96 English leagues and squads, and the first
+        three <a href="11-engine-evolution.html">Engine Evolution</a> milestones shipped:
+        EE-1 (phase-pipeline core + golden-master/statistical regression armour),
+        EE-2 (ten detailed positions, formation geometry, familiarity — save v7), and
+        EE-3 (eight real attributes driving the engine — save v8). The facts above reflect
+        the current build; the deep-dive docs 03/04 carry inline notes where the EE
+        milestones changed the original design.</p>
       </blockquote>
     </article>
   </main>
 
-  <footer>Champman design documentation · generated 2026-07-11 · ⚽</footer>
+  <footer>Champman design documentation · generated 2026-07-11 · updated 2026-07-15 · ⚽</footer>
 </body>
 </html>

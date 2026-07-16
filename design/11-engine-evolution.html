@@ -11,7 +11,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb"><a href="index.html">Design</a> › 11 · Engine Evolution</span>
     <span class="spacer"></span>
-    <span class="meta">Forward · v0.4 · updated 2026-07-15</span>
+    <span class="meta">Forward · v0.5 · updated 2026-07-16</span>
   </header>
 
   <main class="wrap">
@@ -47,12 +47,13 @@
       <p class="subtitle">Seven session-sized milestones that take the match engine from an abstract minute simulator to a watchable, player-level game — without ever breaking what works</p>
 
       <div class="callout gold">
-        <span class="label">Track status — 3 of 7 shipped</span>
+        <span class="label">Track status — 4 of 7 shipped</span>
         <p><strong>EE-1</strong> (extensible core &amp; regression armour), <strong>EE-2</strong>
-        (ten positions &amp; formation geometry, save v7) and <strong>EE-3</strong> (eight real
-        attributes, save v8) are built, tested, and merged. The world data also moved to the
-        real 1995/96 English leagues and squads along the way. The suite has grown from 148
-        to 194 tests. Next up: <strong>EE-4</strong> · per-player instructions.</p>
+        (ten positions &amp; formation geometry, save v7), <strong>EE-3</strong> (eight real
+        attributes, save v8) and <strong>EE-4</strong> (per-player instructions, save v9) are
+        built, tested, and merged. The world data also moved to the real 1995/96 English
+        leagues and squads along the way. The suite has grown from 148 to 213 tests.
+        Next up: <strong>EE-5</strong> · ball location &amp; possession chains.</p>
       </div>
 
       <div class="callout blue">
@@ -73,8 +74,8 @@
         <tbody>
           <tr><td>Positions</td><td>4 (GK/DF/MF/FW)</td><td>10 pitch positions with familiarity grades and formation slot coordinates</td><td>✅ Shipped (EE-2)</td></tr>
           <tr><td>Player attributes</td><td>2 visible (<code>atk</code>/<code>def</code>)</td><td>8 visible attributes driving distinct engine decisions</td><td>✅ Shipped (EE-3)</td></tr>
-          <tr><td>Tactics</td><td>Formation + team mentality</td><td>Plus per-player instructions (runs, pressing) set by clicking the player on the tactics pitch</td><td>EE-4 · next</td></tr>
-          <tr><td>Match model</td><td>Independent abstract minutes</td><td>Ball location + possession chains across pitch zones, with honest territory/pressure display</td><td>EE-5</td></tr>
+          <tr><td>Tactics</td><td>Formation + team mentality</td><td>Plus per-player instructions (runs, pressing) set by clicking the player on the tactics pitch</td><td>✅ Shipped (EE-4)</td></tr>
+          <tr><td>Match model</td><td>Independent abstract minutes</td><td>Ball location + possession chains across pitch zones, with honest territory/pressure display</td><td>EE-5 · next</td></tr>
           <tr><td>Match record</td><td>Commentary strings + stat lines</td><td>Structured action stream: who passed to whom, who tackled, who ran where</td><td>EE-6</td></tr>
           <tr><td>Watching</td><td>Text commentary feed</td><td>2D pitch viewer replaying the action stream — full match or highlights</td><td>EE-7</td></tr>
         </tbody>
@@ -83,12 +84,12 @@
       <h2>2. Why a Track, Not a Rewrite</h2>
       <p>A big-bang engine rewrite was considered and rejected. The current engine is
       deterministic, statistically calibrated (scorelines land close to real football's
-      near-Poisson distributions), and covered by 194 tests (148 at track start). A rewrite
+      near-Poisson distributions), and covered by 213 tests (148 at track start). A rewrite
       gambles all of that at once. Instead, each milestone changes <strong>one layer</strong>
       and re-proves the whole system before the next begins. The first milestone (EE-1) built
       the safety apparatus — a golden-master harness and a statistical invariant suite — that
-      every later milestone leans on; EE-2 and EE-3 have already shipped through it with the
-      invariants green throughout.</p>
+      every later milestone leans on; EE-2, EE-3, and EE-4 have already shipped through it
+      with the invariants green throughout.</p>
 
       <div class="callout gold">
         <span class="label">The momentum bar, done honestly</span>
@@ -133,13 +134,15 @@
           old formulas for plain atk/def players.
           <a href="engine-evolution/m3-attributes/index.html">Design →</a></p>
         </div>
-        <div class="phase future">
-          <div class="ph-head">EE-4 <span class="stat-pill">PTI · per-player instructions</span></div>
+        <div class="phase">
+          <div class="ph-head">EE-4 <span class="stat-pill">SHIPPED 2026-07-16 · save v9</span></div>
           <h3>Click a player on the tactics pitch, tell him what to do</h3>
           <p>The FM-defining interaction: forward runs / balanced / hold position, and
           press high / normal / sit deep — per slot, persisted with tactics, visualised as
-          arrows on the pitch, and consumed by the engine as weight and strength modifiers.
-          AI managers get instruction presets.
+          arrows on the pitch (with a team balance strip), and consumed by the engine as
+          weight and strength modifiers. Defaults proven byte-identical to the pre-EE-4
+          goldens; statistical tests verify each axis moves play in the promised
+          direction. AI managers derive presets from mentality on in-match switches.
           <a href="engine-evolution/m4-player-instructions/index.html">Design →</a></p>
         </div>
         <div class="phase future">
@@ -181,7 +184,7 @@ EE-1 CORE ──► EE-2 POS ──► EE-4 PTI ─────────┐
                     ▲            ▲
 EE-1 CORE ──► EE-5 BALL ─────────┘
 
-Build order: EE-1 ✅ → EE-2 ✅ → EE-3 ✅ → EE-4 → EE-5 → EE-6 → EE-7
+Build order: EE-1 ✅ → EE-2 ✅ → EE-3 ✅ → EE-4 ✅ → EE-5 → EE-6 → EE-7
 </pre>
       </div>
       <ul>
@@ -210,7 +213,7 @@ Build order: EE-1 ✅ → EE-2 ✅ → EE-3 ✅ → EE-4 → EE-5 → EE-6 → E
           <tr><td>EE-1 Core ✅</td><td>Refactor only (~large move, zero behaviour)</td><td>None</td><td>~15</td><td>No</td><td>No — byte-identical</td></tr>
           <tr><td>EE-2 Positions ✅</td><td>Medium (team.js rewrite, match.js touch)</td><td>Labels + pitch badges</td><td>~20</td><td>Yes — v7</td><td>Minor</td></tr>
           <tr><td>EE-3 Attributes ✅</td><td>Medium (generation + decision points)</td><td>Profile grid, scout ranges</td><td>~18</td><td>Yes — v8</td><td>Yes</td></tr>
-          <tr><td>EE-4 Instructions</td><td>Small-medium (modifier plumbing)</td><td>Tactics click-panel + arrows</td><td>~16</td><td>Yes</td><td>Minor</td></tr>
+          <tr><td>EE-4 Instructions ✅</td><td>Small-medium (modifier plumbing)</td><td>Tactics click-panel + arrows</td><td>~16 (19 landed)</td><td>Yes — v9</td><td>Minor</td></tr>
           <tr><td>EE-5 Ball model</td><td>Large (minute loop core)</td><td>Territory bar</td><td>~20</td><td>No</td><td>Yes — the big one</td></tr>
           <tr><td>EE-6 Actions</td><td>Medium (tick resolver)</td><td>Richer feed</td><td>~18</td><td>No</td><td>Minor</td></tr>
           <tr><td>EE-7 Viewer</td><td>None</td><td>Large (SVG viewer)</td><td>~10 + smoke</td><td>No</td><td>No</td></tr>
@@ -262,8 +265,8 @@ Build order: EE-1 ✅ → EE-2 ✅ → EE-3 ✅ → EE-4 → EE-5 → EE-6 → E
       <a href="09-roadmap.html">09 · Roadmap</a>. Horizon 1 features (assistant, stats,
       interaction) touch <code>game.js</code> and the UI, not the match core — they can
       interleave freely between EE milestones. Two courtesy rules: coordinate
-      <code>SAVE_VERSION</code> numbers at build time (EE-2 took v7 and EE-3 took v8; the
-      next milestone or Horizon feature that bumps the schema takes v9), and never run an
+      <code>SAVE_VERSION</code> numbers at build time (EE-2 took v7, EE-3 v8, and EE-4 v9; the
+      next milestone or Horizon feature that bumps the schema takes v10), and never run an
       EE milestone and a Horizon feature in the same session.</p>
 
       <h2>9. Acceptance (track exit)</h2>

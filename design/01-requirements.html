@@ -176,7 +176,7 @@
         <tbody>
           <tr><td><code>SAV-01</code></td><td>The game shall auto-save to localStorage after every week.</td><td>Save written on <code>advanceWeek</code> and after transfers/tactics.</td></tr>
           <tr><td><code>SAV-02</code></td><td>A saved game shall restore and continue deterministically.</td><td>RNG state restored; resumed career replays identically.</td></tr>
-          <tr><td><code>SAV-03</code></td><td>The save format shall carry a version for compatibility gating.</td><td><code>SAVE_VERSION 8</code>; additive migrations upgrade v6/v7 saves; restore throws on mismatch.</td></tr>
+          <tr><td><code>SAV-03</code></td><td>The save format shall carry a version for compatibility gating.</td><td><code>SAVE_VERSION 9</code>; additive migrations upgrade v6–v8 saves; restore throws on mismatch.</td></tr>
         </tbody>
       </table>
 
@@ -187,7 +187,7 @@
           <tr><td>Performance</td><td>Engine-only operations complete without perceptible delay.</td><td>A full season sim headless completes in &lt; 1 s.</td></tr>
           <tr><td>Portability</td><td>No build step; runs from any static file server.</td><td><code>npm run serve</code> (python http.server) suffices.</td></tr>
           <tr><td>Determinism</td><td>All randomness flows through one seeded RNG.</td><td>Identical seed → identical career (tested).</td></tr>
-          <tr><td>Testability</td><td>Engine is pure &amp; framework-free; UI is a thin client.</td><td>194 node:test tests, no DOM dependency in engine.</td></tr>
+          <tr><td>Testability</td><td>Engine is pure &amp; framework-free; UI is a thin client.</td><td>213 node:test tests, no DOM dependency in engine.</td></tr>
           <tr><td>Accessibility</td><td>Keyboard navigability and ARIA labelling on key controls.</td><td>Team rows focusable + Enter/Space; <code>aria-live</code> on commentary.</td></tr>
           <tr><td>Footprint</td><td>Zero runtime dependencies.</td><td><code>package.json</code> devDependencies only.</td></tr>
           <tr><td>Realism</td><td>Statistical distributions over thousands of matches are believable.</td><td>~1.3–2.4 goals/match; home advantage present; mismatches dominate.</td></tr>

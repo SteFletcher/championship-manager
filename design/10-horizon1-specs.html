@@ -60,8 +60,8 @@
         identically from the same seed. <strong>One save bump</strong> — the two features
         that persist new state (STA, INT) share a single <code>SAVE_VERSION</code>
         migration (<a href="#migration">§5.1</a>). <em>Update 2026-07-15:</em> the Engine
-        Evolution track has since taken v7 (EE-2) and v8 (EE-3), so this spec's bump is
-        now <strong>v8 → v9</strong>; the migration content is unchanged.</p>
+        Evolution track has since taken v7 (EE-2), v8 (EE-3), and v9 (EE-4), so this
+        spec's bump is now <strong>v9 → v10</strong>; the migration content is unchanged.</p>
       </div>
 
       <h2 id="f1">2. Feature AST — Assistant Takes Charge</h2>
@@ -405,19 +405,19 @@ INBOX — transfer request (actionable, pending-offers pattern)
 
       <h2 id="cross">5. Cross-Cutting Concerns</h2>
 
-      <h3 id="migration">5.1 Save Migration — <code>SAVE_VERSION 8 → 9</code></h3>
-      <p><em>(Originally specified as 6 → 7; renumbered after EE-2/EE-3 took v7 and v8.)</em>
+      <h3 id="migration">5.1 Save Migration — <code>SAVE_VERSION 9 → 10</code></h3>
+      <p><em>(Originally specified as 6 → 7; renumbered after EE-2/EE-3/EE-4 took v7–v9.)</em>
       STA and INT both persist new fields; they ship under a single version bump to
       avoid two-version churn. The migration is additive-only:</p>
       <table class="grid">
-        <thead><tr><th>Payload area</th><th>Change</th><th>v8 → v9 default</th></tr></thead>
+        <thead><tr><th>Payload area</th><th>Change</th><th>v9 → v10 default</th></tr></thead>
         <tbody>
           <tr><td><code>seasonStats[*]</code></td><td>+ <code>yellows, reds, cleanSheets</code></td><td>0, 0, 0</td></tr>
           <tr><td><code>clubs[*].players[*]</code></td><td>+ <code>lastTalkWeek, lastPraiseWeek, unhappyWeeks, wantsAway</code></td><td>null, null, 0, false</td></tr>
         </tbody>
       </table>
       <p>Loading an older save fills defaults and stamps the new version (chaining through
-      the existing v6→v7→v8 migrations first); a one-time inbox note explains that
+      the existing v6→…→v9 migrations first); a one-time inbox note explains that
       card/clean-sheet counts start from the load point. No field is removed or
       reinterpreted, so new code never mis-reads old data.</p>
 

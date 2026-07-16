@@ -44,7 +44,7 @@
       <code>node --test</code> unit and property tests. A single puppeteer-driven browser smoke
       test then proves the UI wires the engine correctly end-to-end.</p>
       <div class="stats">
-        <div class="stat"><span class="num">194</span><span class="lbl">Engine/game tests</span></div>
+        <div class="stat"><span class="num">213</span><span class="lbl">Engine/game tests</span></div>
         <div class="stat"><span class="num">8</span><span class="lbl">Test files</span></div>
         <div class="stat"><span class="num">1</span><span class="lbl">Browser E2E smoke</span></div>
         <div class="stat"><span class="num">~2.5s</span><span class="lbl">Full suite runtime</span></div>
@@ -75,6 +75,7 @@
           <tr><td><code>statistical-invariants.test.js</code></td><td>Realism bands (EE-1)</td><td>Scoreline distribution, home advantage, shots, cards, possession spread over large samples — must pass on every milestone, never re-baselined casually</td></tr>
           <tr><td><code>match-phases.test.js</code></td><td>Phase pipeline (EE-1)</td><td>Phase order, minute-context flow, structured event <code>data</code> payloads, phase hooks</td></tr>
           <tr><td><code>positions.test.js</code></td><td>Detailed positions (EE-2)</td><td>Ten-position set, secondaries, familiarity ladder, formation slot geometry, v6→v7 migration determinism</td></tr>
+          <tr><td><code>instructions.test.js</code></td><td>Player instructions (EE-4)</td><td>Defaults as exact no-op, per-axis statistical direction proofs, fatigue cost, mid-match determinism, formation remap with orphan resets, AI presets, v8→v9 migration</td></tr>
           <tr><td><code>attributes.test.js</code></td><td>Attribute expansion (EE-3)</td><td>Eight-attribute generation per archetype, derived atk/def composites, <code>attrOf</code> legacy fallbacks, v7→v8 migration determinism</td></tr>
           <tr><td><code>browser-smoke.js</code></td><td>E2E browser flow</td><td>Loads the app, starts a career, plays a match, advances weeks, checks DOM invariants — in a real browser</td></tr>
         </tbody>
@@ -147,7 +148,7 @@ node test/browser-smoke.js [path-to-browser-binary]</code></pre>
       <table class="grid">
         <thead><tr><th>Gate</th><th>Criterion</th><th>Enforced by</th></tr></thead>
         <tbody>
-          <tr><td>Green suite</td><td>194/194 tests pass</td><td><code>npm test</code> in CI / pre-merge</td></tr>
+          <tr><td>Green suite</td><td>213/213 tests pass</td><td><code>npm test</code> in CI / pre-merge</td></tr>
           <tr><td>No build step</td><td>App loads from a static server with no transpilation</td><td><code>npm run serve</code> manual check</td></tr>
           <tr><td>Save compatibility</td><td>Restore refuses mismatched <code>SAVE_VERSION</code></td><td>game.test.js</td></tr>
           <tr><td>E2E smoke</td><td>Full career flow completes in a real browser</td><td>browser-smoke.js (manual)</td></tr>

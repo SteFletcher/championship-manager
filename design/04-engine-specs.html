@@ -67,8 +67,10 @@
       context (<code>halfTimeWhistle → aiPolicies → possession → buildUp → discipline →
       injuries → chanceCreation → fatigue → snapshot → clock</code>), pinned by
       golden-master fixtures and a statistical invariant suite; since EE-3 its decision
-      points read the eight real attributes via <code>attrOf()</code>. See
-      <a href="11-engine-evolution.html">11 · Engine Evolution</a> and the EE-1/EE-3
+      points read the eight real attributes via <code>attrOf()</code>; and since EE-4
+      per-slot player instructions scale contribution splits, pick weights, pass
+      completion, foul rates, chance quality, and fatigue (exact no-ops at defaults). See
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a> and the EE-1/EE-3/EE-4
       milestone designs for the deltas.</p>
 
       <h3>2.1 Public API</h3>
@@ -76,6 +78,7 @@
   constructor(home, away, options)   // {seed?, knockout?, timeline?, homeAdvantage?, autoSubs?}
   playMinute()                       // → Event[] for that minute
   setTactics(sideKey, {formation?, mentality?})
+  setInstruction(sideKey, playerId, axis, value)  // EE-4: runs/press per slot
   makeSub(sideKey, offId, onId)      // → {ok} | {ok:false, error}
   simulateToEnd()
   finish()                           // → MatchResult (see data model)
@@ -318,7 +321,7 @@ playMinute() — phase pipeline (EE-1):
           <tr><td><code>MASK_HALF_WIDTH</code></td><td>8</td><td>Attribute estimate range</td></tr>
           <tr><td><code>TICKET_PRICE</code></td><td>£14</td><td>Per attendee gate</td></tr>
           <tr><td><code>EXPANSION_COST_PER_SEAT</code></td><td>£220</td><td>Stadium build cost</td></tr>
-          <tr><td><code>SAVE_VERSION</code></td><td>8</td><td>Persistence schema version (v7: detailed positions · v8: eight attributes)</td></tr>
+          <tr><td><code>SAVE_VERSION</code></td><td>9</td><td>Persistence schema version (v7: detailed positions · v8: eight attributes · v9: player instructions)</td></tr>
           <tr><td><code>RETIREMENT_AGE</code></td><td>34</td><td>60% retire chance at/above</td></tr>
         </tbody>
       </table>

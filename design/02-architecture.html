@@ -70,7 +70,7 @@
 │                        BROWSER (DOM)                             │
 │  index.html · css/style.css                                      │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │  js/app.js   — UI controller (1121 LOC)                    │  │
+│  │  js/app.js   — UI controller (~1,400 LOC)                  │  │
 │  │  • start screen · hub shell · match day                    │  │
 │  │  • renders engine state · paces the match timer            │  │
 │  │  • localStorage save/load orchestration                    │  │
@@ -82,7 +82,7 @@
 │                  ENGINE LAYER (pure ES modules)                  │
 │                                                                  │
 │   ┌──────────────────────────────────────────────────────────┐   │
-│   │  game.js  — Game class (career orchestrator, 1122 LOC)   │   │
+│   │  game.js  — Game class (career orchestrator, ~1,200 LOC) │   │
 │   │  weeks · finances · board · news · awards · scouting     │   │
 │   │  stadium · job market · transfers glue · save/restore    │   │
 │   └──┬───────┬────────┬────────┬─────────┬──────────┬────────┘   │
@@ -107,8 +107,9 @@
 └──────────────────────────────────────────────────────────────────┘
                   ▲
           ┌────────────────┐
-          │ src/data/      │  40 clubs, deterministic squad
-          │  teams.js      │  generation from club name
+          │ src/data/      │  the real 1995/96 English clubs and
+          │  teams.js      │  squads (squads1995.js); attributes
+          │  squads1995.js │  generated deterministically from tier
           └────────────────┘
 </pre>
       </div>
@@ -118,16 +119,17 @@
         <thead><tr><th>Module</th><th>LOC</th><th>Responsibility</th><th>Exports</th></tr></thead>
         <tbody>
           <tr><td><code>rng.js</code></td><td>59</td><td>Seeded PRNG + string hashing</td><td><code>createRng</code>, <code>hashString</code></td></tr>
-          <tr><td><code>players.js</code></td><td>94</td><td>Player creation, valuation, development</td><td><code>createPlayer</code>, <code>ability</code>, <code>fairValue</code>, <code>developPlayer</code>, <code>isAvailable</code></td></tr>
-          <tr><td><code>team.js</code></td><td>157</td><td>Formations, lineup selection, ratings</td><td><code>FORMATIONS</code>, <code>MENTALITIES</code>, <code>selectXI</code>, <code>validateTeam</code>, <code>teamRatings</code>, <code>overallRating</code></td></tr>
-          <tr><td><code>match.js</code></td><td>867</td><td>Resumable minute-by-minute match simulation</td><td><code>MatchSim</code>, <code>simulateMatch</code></td></tr>
+          <tr><td><code>players.js</code></td><td>346</td><td>Player creation, eight attributes, positions, valuation, development</td><td><code>createPlayer</code>, <code>ability</code>, <code>attrOf</code>, <code>unitContribution</code>, <code>detailPlayer</code>, <code>expandAttributes</code>, <code>developPlayer</code>, <code>isAvailable</code></td></tr>
+          <tr><td><code>team.js</code></td><td>296</td><td>Formations, familiarity, player instructions, lineup selection, ratings</td><td><code>FORMATIONS</code>, <code>MENTALITIES</code>, <code>selectXI</code>, <code>validateTeam</code>, <code>familiarity</code>, <code>instructionMods</code>, <code>instructionPreset</code>, <code>remapInstructions</code>, <code>teamRatings</code>, <code>overallRating</code></td></tr>
+          <tr><td><code>match.js</code></td><td>1095</td><td>Resumable minute-by-minute match simulation (phase pipeline)</td><td><code>MatchSim</code>, <code>simulateMatch</code></td></tr>
           <tr><td><code>league.js</code></td><td>79</td><td>Round-robin fixtures + table computation</td><td><code>generateFixtures</code>, <code>computeTable</code></td></tr>
           <tr><td><code>cup.js</code></td><td>91</td><td>Knockout draw with byes, round naming</td><td><code>createCup</code>, <code>advanceCup</code>, <code>cupRoundNames</code>, <code>inCup</code></td></tr>
           <tr><td><code>season.js</code></td><td>34</td><td>Calendar merging league + cup weeks</td><td><code>buildCalendar</code>, <code>monthName</code></td></tr>
           <tr><td><code>transfers.js</code></td><td>73</td><td>Valuations, negotiation, AI interest</td><td><code>askingPrice</code>, <code>evaluateBid</code>, <code>wageDemand</code>, <code>aiInterest</code></td></tr>
-          <tr><td><code>game.js</code></td><td>1122</td><td>Career orchestrator &amp; state owner</td><td><code>Game</code> class</td></tr>
-          <tr><td><code>teams.js</code> (data)</td><td>136</td><td>40 clubs + deterministic squad generation</td><td><code>TEAMS</code>, <code>buildClubs</code>, <code>clubFinances</code></td></tr>
-          <tr><td><code>app.js</code> (UI)</td><td>1121</td><td>UI controller</td><td>— (side-effect on import)</td></tr>
+          <tr><td><code>game.js</code></td><td>1213</td><td>Career orchestrator &amp; state owner</td><td><code>Game</code> class</td></tr>
+          <tr><td><code>teams.js</code> (data)</td><td>184</td><td>The 40 real 1995/96 clubs + deterministic squad generation</td><td><code>TEAMS</code>, <code>buildClubs</code>, <code>clubFinances</code></td></tr>
+          <tr><td><code>squads1995.js</code> (data)</td><td>242</td><td>Real 18-man 1995/96 squads for every club</td><td><code>SQUADS_1995</code></td></tr>
+          <tr><td><code>app.js</code> (UI)</td><td>1416</td><td>UI controller</td><td>— (side-effect on import)</td></tr>
         </tbody>
       </table>
 
@@ -136,8 +138,8 @@
         <li>The dependency graph is a <strong>DAG with rng.js as the root</strong>. No cycles.</li>
         <li><code>game.js</code> depends on every engine module; it is the only module that composes the subsystems.</li>
         <li><code>match.js</code> depends only on <code>rng.js</code> and <code>team.js</code> — it knows nothing about seasons, finances, or transfers.</li>
-        <li><code>app.js</code> imports <code>Game</code> and a few helpers (<code>teamRatings</code>, <code>overallRating</code>, <code>ability</code>) for display; it never imports <code>match.js</code> directly.</li>
-        <li>The data module <code>teams.js</code> depends on <code>rng.js</code> and <code>players.js</code> only — so the world can be rebuilt deterministically without the full engine.</li>
+        <li><code>app.js</code> imports <code>Game</code> and display helpers (<code>teamRatings</code>, <code>overallRating</code>, <code>ability</code>, <code>familiarity</code>, <code>FORMATIONS</code>, <code>INSTRUCTION_AXES</code>); it never imports <code>match.js</code> directly.</li>
+        <li>The data modules (<code>teams.js</code>, <code>squads1995.js</code>) depend on <code>rng.js</code>, <code>players.js</code>, and <code>team.js</code> (detailed positions) only — so the world can be rebuilt deterministically without the full engine.</li>
       </ul>
 
       <h2>5. The Determinism Contract</h2>

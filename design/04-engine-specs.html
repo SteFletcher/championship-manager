@@ -62,7 +62,7 @@
       </div>
 
       <h2>2. Match Simulation Engine</h2>
-      <p>Source: <code>src/engine/match.js</code> (~990 LOC). The most complex subsystem.
+      <p>Source: <code>src/engine/match.js</code> (~1,100 LOC). The most complex subsystem.
       Since EE-1 the minute loop is an ordered pipeline of named phases sharing a minute
       context (<code>halfTimeWhistle → aiPolicies → possession → buildUp → discipline →
       injuries → chanceCreation → fatigue → snapshot → clock</code>), pinned by
@@ -92,6 +92,9 @@ simulateMatch(home, away, options)   // convenience: one-shot → MatchResult</c
         <li><strong>Explicit XI</strong> (<code>{name, players:[11]}</code>): used as-is, slot = natural pos.</li>
         <li><strong>Prepared lineup</strong> (<code>{starters:[{player,slot}], bench, formation, mentality}</code>): the richest form, used by the live UI.</li>
       </ol>
+      <p>All three shapes accept an optional <code>instructions</code> array (EE-4), aligned
+      index-for-index with the starters / formation slots; missing or invalid entries
+      default to balanced/normal, and keepers are always pinned to the default.</p>
       <p><code>validateSetup()</code> then enforces exactly one GK slot, valid positions, and
       attribute ranges — throwing descriptive errors before any minute is played.</p>
 
@@ -103,16 +106,19 @@ playMinute() — phase pipeline (EE-1):
   aiPolicies        for each side: #aiTacticsPolicy ; #autoSubPolicy
   possession        resolve possession (midfield battle × home boost)
   buildUp           quiet build-up: passes (3–8) + maybe a tackle → feeds live ratings
-  discipline        fouls &amp; cards (per side, 11% chance):
+                        defenders' press shifts pass completion (oppPass) and
+                        tackle attempts/picks (tackleW) — EE-4
+  discipline        fouls &amp; cards (per side, 11% × mean foulCh — EE-4):
                         straight red 0.6% · yellow 11% · second-yellow → red
   injuries          0.18% per side/min, weighted by injuryProne &amp; low condition:
                         AI auto-subs immediately; user side left short until manager reacts
-  chanceCreation    BASE_CHANCE_PROB × mentality mods × attack/defence ratio:
-                        shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3)
+  chanceCreation    BASE_CHANCE_PROB × mentality mods × concedeQ × attack/defence ratio:
+                        shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3) × shootW
                         miss (42%−finishing×0.15%) · block (22%) ·
                         on-target → goal prob = finishing / (finishing + keeper×4)
                         assist awarded 60% (ASSIST_WEIGHT MF=2, FW=1.5, DF=0.5)
   fatigue           condition decay (GK 0.08/min, others stamina-scaled ~0.30/min)
+                        × per-player instruction decay (EE-4)
   snapshot          push timeline snapshot
   clock             if minute ≥ finalMinute: #endStage (ET? shootout? complete)
 </pre>
@@ -123,7 +129,9 @@ playMinute() — phase pipeline (EE-1):
       contribution. Since EE-3 the base is <code>unitContribution(player, unit)</code> — an
       attribute blend per unit (keepers: handling/reflexes; defence: tackling/positioning;
       midfield: passing-led with positioning, tackling, pace; attack: finishing/pace) — and since EE-2
-      the positional multiplier is the familiarity ladder:</p>
+      the positional multiplier is the familiarity ladder. Since EE-4 each entry's runs
+      instruction scales its contribution when the unit feeds an attacking (atkC) or
+      defensive (defC) strength:</p>
       <pre><code>#eff(side, entry, base) = unitContribution(player, unit)
                        × familiarity(player, slot)   // 1.0 natural · 0.9 secondary ·
                                                      // 0.8 same-unit · 0.65 cross-unit ·
@@ -159,7 +167,9 @@ playMinute() — phase pipeline (EE-1):
       <h3>2.6 AI Behaviour</h3>
       <ul>
         <li><strong>Tactics policy</strong> (after minute 55, 6% chance/min): trailing → attacking
-        (and 4-3-3 after 75); leading after 70 → defensive (5-3-2 after 82); level &amp; short-handed → defensive.</li>
+        (and 4-3-3 after 75); leading after 70 → defensive (5-3-2 after 82); level &amp; short-handed → defensive.
+        Every mentality switch re-derives the side's player instructions from the preset
+        (EE-4): attacking → full-backs forward + press high; defensive → full-backs hold + sit deep.</li>
         <li><strong>Auto-sub policy</strong> (60–85 min, 5% chance): replaces the most tired
         outfielder (&lt;80 condition) with the best bench fit for the slot.</li>
         <li><strong>Forced sub on injury</strong>: AI sides substitute immediately; user sides

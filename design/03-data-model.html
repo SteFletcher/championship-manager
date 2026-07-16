@@ -80,7 +80,7 @@
       <table class="grid">
         <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>version</code></td><td>number</td><td>Save-format version; currently <code>6</code>. Mismatch refuses load.</td></tr>
+          <tr><td><code>version</code></td><td>number</td><td>Save-format version; currently <code>9</code>. Older saves migrate additively (v6→…→v9); anything else refuses load.</td></tr>
           <tr><td><code>managerName</code></td><td>string</td><td>Free text, max 30 chars at entry.</td></tr>
           <tr><td><code>clubName</code></td><td>string</td><td>The human club's name; key into <code>clubs</code>.</td></tr>
           <tr><td><code>rngState</code></td><td>number (u32)</td><td>Serialized RNG state — the determinism key.</td></tr>
@@ -98,7 +98,7 @@
           <tr><td><code>inbox</code></td><td>InboxItem[]</td><td>News, newest first, capped at 120.</td></tr>
           <tr><td><code>pendingOffers</code></td><td>Offer[]</td><td>AI bids for the user's players awaiting a decision.</td></tr>
           <tr><td><code>board</code></td><td>{confidence}</td><td>0–100; below 15 triggers sacking.</td></tr>
-          <tr><td><code>tactics</code></td><td>{formation,mentality}</td><td>The user's default approach.</td></tr>
+          <tr><td><code>tactics</code></td><td>{formation, mentality, instructions[11]}</td><td>The user's default approach; per-slot {runs, press} instructions (EE-4) remap on formation change.</td></tr>
           <tr><td><code>history</code></td><td>SeasonHistory[]</td><td>One entry per completed season.</td></tr>
           <tr><td><code>reputation</code></td><td>number</td><td>5–100 managerial standing.</td></tr>
           <tr><td><code>sacked</code></td><td>boolean</td><td>True when the human is between jobs.</td></tr>
@@ -197,7 +197,7 @@
   winner: 'home'|'away'|'draw',
   shootout: {home, away} | null,
   playedMinutes,
-  events: [{minute, type, side, player, text}],
+  events: [{minute, type, side, player, text, data}],  // data: machine-readable payload (EE-1)
   stats: {home: SideStats, away: SideStats},
   scorers: {home: [{player,minute}], away: [...]},
   playerStats: {home: StatLine[], away: StatLine[]},

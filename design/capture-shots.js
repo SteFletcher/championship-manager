@@ -39,10 +39,10 @@ await sleep(250);
 await page.screenshot({ path: `${OUT}/01-start-screen.png` });
 shot('01-start-screen', 'New career / team selection screen with squad inspector');
 
-// 2. Start a career at a mid-table club (Harton Villa).
+// 2. Start a career at a mid-table club (Aston Villa).
 await page.evaluate(() => {
   const row = [...document.querySelectorAll('#team-rows tr')].find((r) =>
-    r.dataset.team === 'Harton Villa');
+    r.dataset.team === 'Aston Villa');
   if (row) row.click();
 });
 await sleep(500);
@@ -62,10 +62,16 @@ await nav('squad');
 await page.screenshot({ path: `${OUT}/03-squad.png` });
 shot('03-squad', 'Squad management — players, condition, form, morale, wages, contracts');
 
-// 4. Tactics
+// 4. Tactics — open the instruction panel on the right-back and send him
+// forward so the shot shows the EE-4 pitch, arrows, and balance strip.
 await nav('tactics');
+await page.evaluate(() => document.querySelector('[data-instr-slot="1"]')?.click());
+await sleep(250);
+await page.evaluate(() =>
+  document.querySelector('#instr-panel [data-axis="runs"][data-value="forward"]')?.click());
+await sleep(250);
 await page.screenshot({ path: `${OUT}/04-tactics.png` });
-shot('04-tactics', 'Tactics — formation, mentality, XI/bench/reserves with click-to-swap');
+shot('04-tactics', 'Tactics — instruction pitch (click a player: runs/press, arrows, balance strip), formation, mentality, click-to-swap XI');
 
 // 5. Fixtures
 await nav('fixtures');

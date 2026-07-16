@@ -110,6 +110,20 @@ try {
     rows.filter((r) => r.children[0].textContent === 'ST').length);
   assert.equal(fwCount, 3, '4-3-3 should start 3 strikers');
   console.log('✔ tactics: swaps work, formation changes reshape the XI');
+
+  // EE-4: click a pitch marker, set an instruction, see the arrow.
+  const tacChips = await page.$$eval('[data-instr-slot]', (els) => els.length);
+  assert.equal(tacChips, 11, `tactics pitch shows ${tacChips} markers`);
+  await page.click('[data-instr-slot="0"]'); // the keeper
+  const gkPanel = await page.$eval('#instr-panel', (el) => el.textContent);
+  assert.ok(gkPanel.includes('Keeper instructions are fixed'), gkPanel);
+  await page.click('[data-instr-slot="1"]'); // DR
+  await page.waitForSelector('#instr-panel [data-axis]');
+  await page.click('#instr-panel [data-axis="runs"][data-value="forward"]');
+  await page.waitForSelector('[data-instr-slot="1"] .ia-fwd');
+  const balance = await page.$eval('#balance-strip', (el) => el.textContent);
+  assert.ok(balance.includes('right flank'), `balance strip: ${balance}`);
+  console.log('✔ EE-4 tactics: click panel sets forward runs, arrow + balance strip update');
   await shot('04-tactics');
 
   await page.click('.nav-btn[data-screen="table"]');
@@ -221,6 +235,18 @@ try {
   assert.ok(tacticsLine.includes('5-3-2') && tacticsLine.includes('defensive'),
     `no tactics commentary: ${tacticsLine}`);
   console.log('✔ mid-match tactics change (5-3-2, defensive) confirmed in commentary');
+
+  // EE-4: while paused, click an own outfield marker and set the press.
+  const ownChips = await page.$$('.own-chip');
+  assert.equal(ownChips.length, 11, `expected 11 own markers, got ${ownChips.length}`);
+  await ownChips[2].click(); // onPitch[2]: an outfield defender
+  await page.waitForSelector('#match-instr:not([hidden]) [data-axis]');
+  await page.click('#match-instr [data-axis="press"][data-value="high"]');
+  const instrLine = await page.$eval('#commentary li:last-child', (el) => el.textContent);
+  assert.ok(instrLine.includes('told to press high'), `no instruction commentary: ${instrLine}`);
+  const arrowShown = await page.$$eval('.own-chip .ia-high', (els) => els.length);
+  assert.ok(arrowShown >= 1, 'no press-high arrow on the pitch');
+  console.log('✔ EE-4 match: paused click panel sets pressing, commentary + arrow confirm');
   await shot('07-match-paused-sub');
 
   await page.click('#pause-btn'); // resume
@@ -287,6 +313,11 @@ try {
   const hudAfter = await page.$eval('#hud', (el) => el.textContent);
   assert.equal(hudAfter, hudBefore, 'save did not restore identical state');
   console.log('✔ save persists across a reload');
+
+  // EE-4: the forward-runs instruction set before the match survived the save.
+  await page.click('.nav-btn[data-screen="tactics"]');
+  await page.waitForSelector('[data-instr-slot="1"] .ia-fwd');
+  console.log('✔ EE-4: instruction persisted through save/reload');
 
   // --- A couple more weeks headlessly via the UI -------------------------------------
   for (let i = 0; i < 2; i++) {

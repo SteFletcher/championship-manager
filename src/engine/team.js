@@ -71,6 +71,91 @@ export const FORMATIONS = {
 
 export const MENTALITIES = ['defensive', 'normal', 'attacking'];
 
+// --- Per-player instructions (EE-4) -----------------------------------------
+//
+// Instructions attach to the formation slot (the shirt), not the player:
+// two axes, each with a neutral default that is an exact engine no-op.
+// New axes later are additive entries in INSTRUCTION_EFFECTS.
+export const INSTRUCTION_AXES = {
+  runs: ['forward', 'balanced', 'hold'],
+  press: ['high', 'normal', 'deep'],
+};
+export const DEFAULT_INSTRUCTION = Object.freeze({ runs: 'balanced', press: 'normal' });
+
+const INSTRUCTION_EFFECTS = {
+  runs: {
+    forward: { atkC: 1.15, defC: 0.85, shootW: 1.5, assistW: 1.4, decay: 1.15 },
+    balanced: {},
+    hold: { atkC: 0.87, defC: 1.12, shootW: 0.6, assistW: 0.7, decay: 0.9 },
+  },
+  press: {
+    high: { tackleW: 1.4, foulCh: 1.2, oppPass: -4, decay: 1.10 },
+    normal: {},
+    deep: { tackleW: 0.7, foulCh: 0.85, oppPass: 3, concedeQ: 0.95 },
+  },
+};
+
+// Identity modifier set: multiplying weights by these (or adding oppPass 0)
+// reproduces the pre-EE-4 engine bit-for-bit — the regression stance.
+export const IDENTITY_MODS = Object.freeze({
+  atkC: 1, defC: 1, shootW: 1, assistW: 1,
+  tackleW: 1, foulCh: 1, oppPass: 0, decay: 1, concedeQ: 1,
+});
+
+// Merge both axes into one modifier set. decay is the only key on both
+// axes, so it multiplies; everything else appears on exactly one axis.
+export function instructionMods(instr) {
+  if (!instr) return IDENTITY_MODS;
+  const r = INSTRUCTION_EFFECTS.runs[instr.runs] ?? {};
+  const p = INSTRUCTION_EFFECTS.press[instr.press] ?? {};
+  return { ...IDENTITY_MODS, ...r, ...p, decay: (r.decay ?? 1) * (p.decay ?? 1) };
+}
+
+export function defaultInstructions(count = SQUAD_SIZE) {
+  return Array.from({ length: count }, () => ({ ...DEFAULT_INSTRUCTION }));
+}
+
+// Keep whatever is valid, defaulting the rest; keepers are always default
+// (their axes are disabled).
+export function sanitizeInstruction(instr, slot) {
+  if (unitOf(slot) === 'GK' || !instr) return { ...DEFAULT_INSTRUCTION };
+  return {
+    runs: INSTRUCTION_AXES.runs.includes(instr.runs) ? instr.runs : DEFAULT_INSTRUCTION.runs,
+    press: INSTRUCTION_AXES.press.includes(instr.press) ? instr.press : DEFAULT_INSTRUCTION.press,
+  };
+}
+
+// AI clubs derive instructions from mentality (PTI-06): an attacking side
+// sends its full-backs forward and presses high; a defensive side sits its
+// full-backs and drops the press deep.
+export function instructionPreset(mentality, slot) {
+  if (unitOf(slot) === 'GK') return { ...DEFAULT_INSTRUCTION };
+  const fullBack = slot === 'DR' || slot === 'DL';
+  if (mentality === 'attacking') {
+    return { runs: fullBack ? 'forward' : 'balanced', press: 'high' };
+  }
+  if (mentality === 'defensive') {
+    return { runs: fullBack ? 'hold' : 'balanced', press: 'deep' };
+  }
+  return { ...DEFAULT_INSTRUCTION };
+}
+
+// Carry instructions across a formation change: slots with the same
+// detailed position keep their instruction (in shape order); orphaned
+// entries reset to defaults. The keeper never carries instructions.
+export function remapInstructions(oldFormation, instructions, newFormation) {
+  const queues = {};
+  FORMATIONS[oldFormation].slots.forEach((s, i) => {
+    if (unitOf(s.pos) === 'GK') return;
+    (queues[s.pos] ??= []).push(instructions?.[i] ?? { ...DEFAULT_INSTRUCTION });
+  });
+  return FORMATIONS[newFormation].slots.map((s) => {
+    if (unitOf(s.pos) === 'GK') return { ...DEFAULT_INSTRUCTION };
+    const carried = queues[s.pos]?.shift();
+    return carried ? { ...carried } : { ...DEFAULT_INSTRUCTION };
+  });
+}
+
 // Multiplier on a player's contribution in a slot (EE-2 familiarity
 // ladder, replacing the old binary slotPenalty). Players without a
 // detailed position (legacy data, plain test XIs) are treated as natural

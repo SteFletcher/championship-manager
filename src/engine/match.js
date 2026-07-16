@@ -21,6 +21,8 @@ import { createRng } from './rng.js';
 import {
   validateTeam, selectXI, familiarity, FORMATIONS, MENTALITIES,
   POSITIONS, DETAILED_POSITIONS, UNIT_OF, unitOf, ATTR_MIN, ATTR_MAX,
+  INSTRUCTION_AXES, DEFAULT_INSTRUCTION, instructionMods, sanitizeInstruction,
+  instructionPreset,
 } from './team.js';
 import { attrOf, unitContribution } from './players.js';
 
@@ -128,13 +130,24 @@ function newLine(player, slot, started) {
   };
 }
 
+// Attach a per-slot instruction to each starter: raw.instructions[i]
+// aligns to starters[i] (both follow the formation's slot order), with a
+// per-starter instr as the fallback shape.
+function withInstructions(starters, instructions) {
+  return starters.map((s, i) => ({
+    player: s.player,
+    slot: s.slot,
+    instr: sanitizeInstruction(instructions?.[i] ?? s.instr, s.slot),
+  }));
+}
+
 function normalizeSetup(raw) {
   if (!raw || typeof raw !== 'object') return { error: 'setup is not an object' };
   if (raw.starters) {
     return {
       name: raw.name,
       shortName: raw.shortName ?? raw.name,
-      starters: raw.starters.map((s) => ({ player: s.player, slot: s.slot })),
+      starters: withInstructions(raw.starters, raw.instructions),
       bench: raw.bench ?? [],
       formation: raw.formation ?? '4-4-2',
       mentality: raw.mentality ?? 'normal',
@@ -145,7 +158,7 @@ function normalizeSetup(raw) {
     return {
       name: raw.name,
       shortName: raw.shortName ?? raw.name,
-      starters: picked.starters,
+      starters: withInstructions(picked.starters, raw.instructions),
       bench: picked.bench,
       formation: picked.formation,
       mentality: raw.mentality ?? 'normal',
@@ -154,7 +167,10 @@ function normalizeSetup(raw) {
   return {
     name: raw.name,
     shortName: raw.shortName ?? raw.name,
-    starters: (raw.players ?? []).map((p) => ({ player: p, slot: p?.position ?? p?.pos })),
+    starters: withInstructions(
+      (raw.players ?? []).map((p) => ({ player: p, slot: p?.position ?? p?.pos })),
+      raw.instructions
+    ),
     bench: raw.bench ?? [],
     formation: raw.formation ?? '4-4-2',
     mentality: raw.mentality ?? 'normal',
@@ -244,7 +260,9 @@ export class MatchSim {
       setup,
       boost,
       autoSubs,
-      onPitch: setup.starters.map((s) => ({ player: s.player, slot: s.slot })),
+      onPitch: setup.starters.map((s) => ({
+        player: s.player, slot: s.slot, instr: s.instr, mods: instructionMods(s.instr),
+      })),
       benchLeft: [...setup.bench],
       subsUsed: 0,
       lines,
@@ -291,16 +309,28 @@ export class MatchSim {
 
   // Unit strength averaged over the kickoff slot count, so sendings off
   // and unreplaced injuries genuinely weaken the side. Each unit reads
-  // the attributes that should drive it (EE-3, unitContribution).
-  #unit(side, unit) {
+  // the attributes that should drive it (EE-3, unitContribution). When a
+  // unit feeds an attacking or defensive strength, each entry's runs
+  // instruction scales its contribution (EE-4, modKey atkC/defC).
+  #unit(side, unit, modKey = null) {
     const entries = side.onPitch.filter((e) => unitOf(e.slot) === unit);
     if (unit === 'GK') {
       if (entries.length === 0) return 5;
       return this.#eff(side, entries[0], unitContribution(entries[0].player, 'GK'));
     }
     const total = entries.reduce(
-      (sum, e) => sum + this.#eff(side, e, unitContribution(e.player, unit)), 0);
+      (sum, e) => sum + this.#eff(side, e, unitContribution(e.player, unit)) *
+        (modKey ? e.mods[modKey] : 1), 0);
     return Math.max(5, total / Math.max(1, side.slotCounts[unit]));
+  }
+
+  // Mean instruction modifier over the on-pitch outfield — the team-level
+  // reading of a per-player axis (press effects scale with how many
+  // players actually press). Defaults are exact identities.
+  #meanMod(side, key) {
+    const entries = side.onPitch.filter((e) => unitOf(e.slot) !== 'GK');
+    if (entries.length === 0) return key === 'oppPass' ? 0 : 1;
+    return entries.reduce((sum, e) => sum + e.mods[key], 0) / entries.length;
   }
 
   // Numbers matter as well as quality: packing a unit strengthens it
@@ -317,22 +347,26 @@ export class MatchSim {
     }
     if (kind === 'attack') {
       return (
-        0.8 * this.#unit(side, 'FW') * this.#headcount(side, 'FW', 2, 0.5) +
-        0.2 * this.#unit(side, 'MF')
+        0.8 * this.#unit(side, 'FW', 'atkC') * this.#headcount(side, 'FW', 2, 0.5) +
+        0.2 * this.#unit(side, 'MF', 'atkC')
       ) * side.boost;
     }
     if (kind === 'defense') {
-      return 0.8 * this.#unit(side, 'DF') * this.#headcount(side, 'DF', 4, 0.5) +
-        0.2 * this.#unit(side, 'MF');
+      return 0.8 * this.#unit(side, 'DF', 'defC') * this.#headcount(side, 'DF', 4, 0.5) +
+        0.2 * this.#unit(side, 'MF', 'defC');
     }
     return this.#unit(side, 'GK');
   }
 
   // weights and slots are unit-level; on-pitch slots may be detailed.
-  #pick(side, weights, slots) {
+  // modKey scales each entry's weight by its instruction modifier (EE-4).
+  #pick(side, weights, slots, modKey = null) {
     const pool = side.onPitch.filter((e) => slots.includes(unitOf(e.slot)));
     if (pool.length === 0) return null;
-    return this.rng.weightedPick(pool.map((e) => ({ item: e, weight: weights[unitOf(e.slot)] ?? 1 })));
+    return this.rng.weightedPick(pool.map((e) => ({
+      item: e,
+      weight: (weights[unitOf(e.slot)] ?? 1) * (modKey ? e.mods[modKey] : 1),
+    })));
   }
 
   #removeFromPitch(side, player) {
@@ -358,11 +392,16 @@ export class MatchSim {
       side.setup.mentality = mentality;
       changes.push(mentality);
     }
+    let instructionResets = 0;
     if (formation && formation !== side.setup.formation) {
       side.setup.formation = formation;
       const shape = FORMATIONS[formation];
       const keeper = side.onPitch.filter((e) => unitOf(e.slot) === 'GK');
       let outfield = side.onPitch.filter((e) => unitOf(e.slot) !== 'GK');
+      // Instructions belong to the slot: a player keeping his slot name
+      // keeps its instructions; one remapped to a different slot starts
+      // from defaults (the orphan-reset rule).
+      const prevSlots = new Map(side.onPitch.map((e) => [pid(e.player), e.slot]));
 
       // Fill defence first, then midfield, then attack, preferring
       // players natural in each unit; within a unit, the shape's detailed
@@ -397,15 +436,67 @@ export class MatchSim {
       }
       side.onPitch = [...keeper, ...remapped];
       side.slotCounts = { GK: 1, DF: shape.DF, MF: shape.MF, FW: shape.FW };
+      for (const e of remapped) {
+        if (e.slot !== prevSlots.get(pid(e.player))) {
+          if (e.instr.runs !== DEFAULT_INSTRUCTION.runs ||
+              e.instr.press !== DEFAULT_INSTRUCTION.press) instructionResets++;
+          e.instr = { ...DEFAULT_INSTRUCTION };
+          e.mods = instructionMods(e.instr);
+        }
+      }
       changes.unshift(formation);
     }
 
     if (changes.length > 0) {
+      const resetNote = instructionResets > 0
+        ? ` — ${instructionResets} player instruction${instructionResets === 1 ? '' : 's'} reset` : '';
       this.#log(Math.max(1, this.minute), 'tactics', sideKey, null,
-        `${side.setup.shortName} switch to ${side.setup.formation} (${side.setup.mentality})`,
-        { formation: side.setup.formation, mentality: side.setup.mentality });
+        `${side.setup.shortName} switch to ${side.setup.formation} (${side.setup.mentality})${resetNote}`,
+        {
+          formation: side.setup.formation,
+          mentality: side.setup.mentality,
+          // Only present when instructions were actually reset, so
+          // default-instruction matches stay byte-identical (PTI-08).
+          ...(instructionResets > 0 ? { instructionResets } : {}),
+        });
     }
     return { ok: true, changed: changes.length > 0 };
+  }
+
+  // Public: set one instruction axis for the player currently occupying a
+  // slot (EE-4). Draws no RNG; effects flow through existing draws.
+  setInstruction(sideKey, playerId, axis, value) {
+    const side = this.sides[sideKey];
+    if (!side) return { ok: false, error: 'unknown side' };
+    if (this.finished) return { ok: false, error: 'match is over' };
+    if (!INSTRUCTION_AXES[axis]) return { ok: false, error: `unknown axis: ${axis}` };
+    if (!INSTRUCTION_AXES[axis].includes(value)) {
+      return { ok: false, error: `unknown ${axis} value: ${value}` };
+    }
+    const entry = side.onPitch.find((e) => pid(e.player) === playerId);
+    if (!entry) return { ok: false, error: 'player is not on the pitch' };
+    if (unitOf(entry.slot) === 'GK') {
+      return { ok: false, error: 'keeper instructions are fixed' };
+    }
+    if (entry.instr[axis] === value) return { ok: true, changed: false };
+    entry.instr = { ...entry.instr, [axis]: value };
+    entry.mods = instructionMods(entry.instr);
+    const phrase = {
+      runs: { forward: 'get forward', balanced: 'play his natural game', hold: 'hold his position' },
+      press: { high: 'press high', normal: 'press normally', deep: 'sit deep' },
+    }[axis][value];
+    this.#log(Math.max(1, this.minute), 'instruction', sideKey, entry.player,
+      `${entry.player.name} told to ${phrase}`,
+      { playerId, axis, value });
+    return { ok: true, changed: true };
+  }
+
+  // Re-derive an AI side's instructions from its (new) mentality (PTI-06).
+  #applyInstructionPreset(side) {
+    for (const e of side.onPitch) {
+      e.instr = instructionPreset(side.setup.mentality, e.slot);
+      e.mods = instructionMods(e.instr);
+    }
   }
 
   // AI managers read the game: chase when behind late, protect a lead,
@@ -421,11 +512,14 @@ export class MatchSim {
     if (diff < 0 && side.setup.mentality !== 'attacking') {
       const formation = this.minute >= 75 && !shortHanded ? '4-3-3' : undefined;
       this.setTactics(sideKey, { mentality: 'attacking', formation });
+      this.#applyInstructionPreset(side);
     } else if (diff > 0 && this.minute >= 70 && side.setup.mentality !== 'defensive') {
       const formation = this.minute >= 82 ? '5-3-2' : undefined;
       this.setTactics(sideKey, { mentality: 'defensive', formation });
+      this.#applyInstructionPreset(side);
     } else if (diff === 0 && shortHanded && side.setup.mentality !== 'defensive') {
       this.setTactics(sideKey, { mentality: 'defensive' });
+      this.#applyInstructionPreset(side);
     }
   }
 
@@ -443,8 +537,11 @@ export class MatchSim {
     const on = side.benchLeft.splice(onIdx, 1)[0];
     side.subsUsed++;
     const slot = offEntry.slot === 'GK' && on.pos !== 'GK' ? 'GK' : offEntry.slot;
+    // Instructions travel with the shirt: the replacement inherits the
+    // outgoing slot's instructions (keeper slots stay fixed).
+    const instr = unitOf(slot) === 'GK' ? { ...DEFAULT_INSTRUCTION } : offEntry.instr;
     this.#removeFromPitch(side, offEntry.player);
-    side.onPitch.push({ player: on, slot });
+    side.onPitch.push({ player: on, slot, instr, mods: instructionMods(instr) });
     const line = this.#line(side, on);
     line.slot = slot;
     this.#log(Math.max(1, this.minute), 'sub', sideKey, on,
@@ -479,6 +576,8 @@ export class MatchSim {
     const volunteer = outfield.reduce((best, e) =>
       (e.player.def > best.player.def ? e : best));
     volunteer.slot = 'GK';
+    volunteer.instr = { ...DEFAULT_INSTRUCTION };
+    volunteer.mods = instructionMods(volunteer.instr);
     this.#line(side, volunteer.player).slot = 'GK';
     this.#log(Math.max(1, this.minute), 'sub', sideKey, volunteer.player,
       `${volunteer.player.name} pulls on the gloves — an emergency keeper!`,
@@ -572,20 +671,24 @@ export class MatchSim {
   }
 
   // Quiet build-up play drives passes, tackles and the live ratings.
+  // The defending side's press shifts the attacker's pass completion
+  // (oppPass percentage points, averaged over the pressers on the pitch)
+  // and scales both the tackle-attempt rate and who attempts them (EE-4).
   #phaseBuildUp(ctx) {
     const { rng, att, def } = ctx;
     const passAttempts = rng.int(3, 8);
+    const pressShift = this.#meanMod(def, 'oppPass') / 100;
     for (let i = 0; i < passAttempts; i++) {
       const passer = this.#pick(att, PASS_WEIGHT, POSITIONS);
       if (!passer) break;
       const skill = attrOf(passer.player, 'passing');
-      if (rng.chance(0.6 + (skill / 99) * 0.32)) {
+      if (rng.chance(0.6 + (skill / 99) * 0.32 + pressShift)) {
         this.#line(att, passer.player).passes++;
         this.#rate(att, passer.player, RATING.pass);
       }
     }
-    if (rng.chance(0.35)) {
-      const tackler = this.#pick(def, TACKLE_WEIGHT, ['DF', 'MF', 'FW']);
+    if (rng.chance(clamp(0.35 * this.#meanMod(def, 'tackleW'), 0.05, 0.85))) {
+      const tackler = this.#pick(def, TACKLE_WEIGHT, ['DF', 'MF', 'FW'], 'tackleW');
       if (tackler && rng.chance(0.45 + (attrOf(tackler.player, 'tackling') / 99) * 0.4)) {
         this.#line(def, tackler.player).tackles++;
         this.#rate(def, tackler.player, RATING.tackle);
@@ -597,9 +700,10 @@ export class MatchSim {
   #phaseDiscipline(ctx) {
     const { minute, rng } = ctx;
     for (const [key, side] of Object.entries(this.sides)) {
-      if (!rng.chance(0.11)) continue;
+      // Pressing sides commit more fouls, and their pressers commit them.
+      if (!rng.chance(clamp(0.11 * this.#meanMod(side, 'foulCh'), 0.02, 0.4))) continue;
       side.stats.fouls++;
-      const offEntry = this.#pick(side, { DF: 1, MF: 1, FW: 1 }, ['DF', 'MF', 'FW']);
+      const offEntry = this.#pick(side, { DF: 1, MF: 1, FW: 1 }, ['DF', 'MF', 'FW'], 'foulCh');
       if (!offEntry) continue;
       const offender = offEntry.player;
       this.#line(side, offender).fouls++;
@@ -691,8 +795,10 @@ export class MatchSim {
     const defStrength = this.#strength(def, 'defense');
     const mods = MENTALITY_MODS[att.setup.mentality].create *
       MENTALITY_MODS[def.setup.mentality].concede;
+    // A deep-sitting defence concedes slightly worse chances (concedeQ).
     const chanceProb = clamp(
-      BASE_CHANCE_PROB * mods * (2 * atkStrength) / (atkStrength + defStrength),
+      BASE_CHANCE_PROB * mods * this.#meanMod(def, 'concedeQ') *
+        (2 * atkStrength) / (atkStrength + defStrength),
       0.06, 0.5
     );
     if (rng.chance(chanceProb)) this.#resolveChance(ctx.attackerKey, att, ctx.defenderKey, def);
@@ -709,7 +815,7 @@ export class MatchSim {
         const line = this.#line(side, e.player);
         line.minutes++;
         const decay = (e.slot === 'GK' ? 0.08 : 0.3) *
-          (1.30 - attrOf(e.player, 'stamina') / 165);
+          (1.30 - attrOf(e.player, 'stamina') / 165) * e.mods.decay;
         line.condition = Math.max(20, line.condition - decay);
       }
     }
@@ -731,7 +837,7 @@ export class MatchSim {
   #resolveChance(attackerKey, att, defenderKey, def) {
     const rng = this.rng;
     const minute = this.minute;
-    const shooterEntry = this.#pick(att, SHOOT_WEIGHT, ['DF', 'MF', 'FW']);
+    const shooterEntry = this.#pick(att, SHOOT_WEIGHT, ['DF', 'MF', 'FW'], 'shootW');
     if (!shooterEntry) return;
     const shooter = shooterEntry.player;
 
@@ -790,7 +896,10 @@ export class MatchSim {
       let assistId = null;
       if (providers.length > 0 && rng.chance(0.6)) {
         const provider = rng.weightedPick(
-          providers.map((e) => ({ item: e, weight: ASSIST_WEIGHT[unitOf(e.slot)] ?? 1 }))
+          providers.map((e) => ({
+            item: e,
+            weight: (ASSIST_WEIGHT[unitOf(e.slot)] ?? 1) * e.mods.assistW,
+          }))
         );
         assistId = pid(provider.player);
         this.#line(att, provider.player).assists++;

@@ -4,6 +4,7 @@
 import { TEAMS } from '../src/data/teams.js';
 import {
   teamRatings, overallRating, FORMATIONS, MENTALITIES, familiarity, DETAILED_POSITIONS, unitOf,
+  INSTRUCTION_AXES,
 } from '../src/engine/team.js';
 import { ability, isAvailable } from '../src/engine/players.js';
 import { Game } from '../src/engine/game.js';
@@ -17,6 +18,7 @@ const state = {
   screen: 'inbox',
   lineup: null, // user-adjusted {starters, bench, formation} or null for auto
   swapSel: null, // tactics swap selection {list, index}
+  instrSel: null, // tactics instruction panel: selected slot index or null
   match: null, // live match state
   transferFilters: { pos: '', maxValue: '' },
   transferNote: '',
@@ -67,6 +69,79 @@ function oopTag(player, slot) {
   if (fam >= 1) return '';
   return ` <span class="status-tag ban" title="familiarity ${Math.round(fam * 100)}%">` +
     `${player.position ?? player.pos} ▸ ${slot}</span>`;
+}
+
+// --- Per-player instructions (EE-4) ----------------------------------------
+
+// Pitch arrow language: solid up/down for runs, double arrows for press.
+function instrMarks(instr) {
+  if (!instr) return '';
+  const marks = [];
+  if (instr.runs === 'forward') marks.push('<span class="ia ia-fwd" title="forward runs">\u25b2</span>');
+  if (instr.runs === 'hold') marks.push('<span class="ia ia-hold" title="hold position">\u25bc</span>');
+  if (instr.press === 'high') marks.push('<span class="ia ia-high" title="press high">\u21c8</span>');
+  if (instr.press === 'deep') marks.push('<span class="ia ia-deep" title="sit deep">\u21ca</span>');
+  return marks.length ? `<span class="chip-instr">${marks.join('')}</span>` : '';
+}
+
+function instrEffectText(instr) {
+  const bits = [];
+  if (instr.runs === 'forward') bits.push('more shots and assists, less defensive cover, tires faster');
+  if (instr.runs === 'hold') bits.push('extra cover, rarely joins the attack');
+  if (instr.press === 'high') bits.push('forces turnovers, gives away more fouls, tires faster');
+  if (instr.press === 'deep') bits.push('fewer fouls, cedes the initiative, softens chances against');
+  return bits.length ? `Effect: ${bits.join('; ')}.` : 'Playing his natural game.';
+}
+
+const AXIS_LABELS = { runs: 'Forward runs', press: 'Pressing' };
+
+function instrPanelHtml(slot, player, instr) {
+  const head = `<div class="instr-head"><b>${esc(slot)} \u00b7 ${esc(surname(player.name).toUpperCase())}</b>
+    <button class="mini-btn" data-instr-close>\u2715</button></div>`;
+  if (unitOf(slot) === 'GK') {
+    return `${head}<p class="hint">Keeper instructions are fixed.</p>`;
+  }
+  const group = (axis) => `
+    <div class="instr-row"><span class="instr-label">${AXIS_LABELS[axis]}</span>
+      <span class="instr-btns">${INSTRUCTION_AXES[axis].map((v) =>
+        `<button class="btn instr-btn ${instr[axis] === v ? 'active' : ''}" data-axis="${axis}" data-value="${v}">${v}</button>`
+      ).join('')}</span></div>`;
+  return `${head}${group('runs')}${group('press')}
+    <p class="hint instr-effect">${instrEffectText(instr)}</p>`;
+}
+
+function bindInstrPanel(container, { onSet, onClose }) {
+  container.querySelector('[data-instr-close]')?.addEventListener('click', onClose);
+  for (const btn of container.querySelectorAll('[data-axis]')) {
+    btn.addEventListener('click', () => onSet(btn.dataset.axis, btn.dataset.value));
+  }
+}
+
+// Team-level sanity readout derived from the instruction set (PTI-07).
+function describeBalance(instructions, formation) {
+  const slots = FORMATIONS[formation].slots;
+  const outfield = slots.map((s, i) => ({ pos: s.pos, instr: instructions[i] }))
+    .filter((x) => unitOf(x.pos) !== 'GK' && x.instr);
+  const notes = [];
+  const fbForward = outfield.filter((x) => (x.pos === 'DR' || x.pos === 'DL') && x.instr.runs === 'forward');
+  if (fbForward.length === 2) notes.push('attacking full-backs');
+  else if (fbForward.length === 1) {
+    notes.push(`attacking ${fbForward[0].pos === 'DR' ? 'right' : 'left'} flank`);
+  }
+  const count = (axis, v) => outfield.filter((x) => x.instr[axis] === v).length;
+  const fwd = count('runs', 'forward');
+  const hold = count('runs', 'hold');
+  if (fwd >= 4) notes.push('very attacking shape');
+  if (hold >= 3) notes.push('cautious shape');
+  if (fwd >= 2 && hold === 0 && fwd < 4) notes.push('bold going forward');
+  const high = count('press', 'high');
+  const deep = count('press', 'deep');
+  if (high >= 6) notes.push('aggressive high press');
+  else if (high >= 2) notes.push('pressing in patches');
+  if (deep >= 6) notes.push('sitting deep');
+  else if (deep >= 2) notes.push('conceding ground in places');
+  if (fwd >= 3 && hold === 0) notes.push('low cover behind the ball');
+  return notes.length ? `Balance: ${notes.join(' \u00b7 ')}` : 'Balance: even \u2014 no special instructions';
 }
 
 function bar(value, low = 40, mid = 65) {
@@ -408,12 +483,45 @@ function renderTactics() {
   const mentalityOpts = MENTALITIES
     .map((m) => `<option ${m === g.tactics.mentality ? 'selected' : ''}>${m}</option>`).join('');
 
-  $('hub-content').innerHTML = `<h1>Tactics</h1>
+    const slots = FORMATIONS[g.tactics.formation].slots;
+  const chips = lineup.starters.map((s, i) => {
+    const { x, y } = slots[i] ?? { x: 50, y: 50 };
+    const sel = state.instrSel === i;
+    return `<div class="chip tac-chip ${sel ? 'selected' : ''}" data-instr-slot="${i}"
+      style="left:${(8 + x * 0.84).toFixed(1)}%; top:${(92 - y * 0.82).toFixed(1)}%">
+      ${instrMarks(g.tactics.instructions[i])}
+      <span class="chip-slot">${s.slot}</span>
+      <span class="chip-name" title="${esc(s.player.name)}">${esc(surname(s.player.name))}</span>
+    </div>`;
+  }).join('');
+  const selEntry = state.instrSel != null ? lineup.starters[state.instrSel] : null;
+  const panelHtml = selEntry
+    ? instrPanelHtml(selEntry.slot, selEntry.player, g.tactics.instructions[state.instrSel])
+    : '<p class="hint">Click a player on the pitch to set forward runs and pressing. Arrows show current instructions: \u25b2 forward runs \u00b7 \u25bc hold \u00b7 \u21c8 press high \u00b7 \u21ca sit deep.</p>';
+
+$('hub-content').innerHTML = `<h1>Tactics</h1>
     <p class="hint">Click two players to swap them. An amber tag (e.g. MC ▸ DM) means out of position — the player contributes less there.</p>
     <div class="panel tactics-controls">
       <label>Formation <select id="formation-select">${formationOpts}</select></label>
       <label>Mentality <select id="mentality-select">${mentalityOpts}</select></label>
       <button class="btn" id="autopick-btn">Auto-pick best XI</button>
+    </div>
+    <div class="panel">
+      <h2 class="panel-title">Instructions \u2014 click a player</h2>
+      <div class="tac-layout">
+        <div class="pitch tac-pitch" id="tac-pitch">
+          <div class="pitch-markings">
+            <div class="pm-halfway" style="top:51%"></div>
+            <div class="pm-box pm-box-top"></div>
+            <div class="pm-box pm-box-bottom"></div>
+          </div>
+          ${chips}
+        </div>
+        <div class="tac-side">
+          <div class="instr-panel" id="instr-panel">${panelHtml}</div>
+          <p class="hint balance-strip" id="balance-strip">${describeBalance(g.tactics.instructions, g.tactics.formation)}</p>
+        </div>
+      </div>
     </div>
     <div class="panel"><h2 class="panel-title">Starting XI</h2>
       <table class="data-table"><thead><tr><th>Slot</th><th class="left">Name</th><th>Pos</th><th>Att</th><th>Def</th><th>Cond</th><th>Form</th></tr></thead>
@@ -426,6 +534,7 @@ function renderTactics() {
   $('formation-select').addEventListener('change', (e) => {
     g.setTactics({ formation: e.target.value });
     state.lineup = null;
+    state.instrSel = null;
     saveGame();
     renderHub();
   });
@@ -436,6 +545,22 @@ function renderTactics() {
   $('autopick-btn').addEventListener('click', () => {
     state.lineup = null;
     renderHub();
+  });
+
+  for (const chip of $('hub-content').querySelectorAll('[data-instr-slot]')) {
+    chip.addEventListener('click', () => {
+      const idx = Number(chip.dataset.instrSlot);
+      state.instrSel = state.instrSel === idx ? null : idx;
+      renderHub();
+    });
+  }
+  bindInstrPanel($('instr-panel'), {
+    onClose: () => { state.instrSel = null; renderHub(); },
+    onSet: (axis, value) => {
+      g.setSlotInstruction(state.instrSel, axis, value);
+      saveGame();
+      renderHub();
+    },
   });
 
   const lists = { starters: lineup.starters, bench: lineup.bench, reserves };
@@ -858,6 +983,7 @@ function kickOff() {
     sim, fixture, userSide,
     timer: null, speed: 250, paused: false,
     statsTab: 'home', prevGoals: new Map(), subSel: { off: null, on: null },
+    instrSel: null,
   };
   $('prematch').hidden = true;
   $('matchday').hidden = false;
@@ -952,7 +1078,7 @@ function updateScoreboard() {
 
 const EVENT_CLASSES = {
   goal: 'ev-goal', red: 'ev-red', yellow: 'ev-yellow', injury: 'ev-red',
-  sub: 'ev-whistle', tactics: 'ev-whistle', kickoff: 'ev-whistle', 'half-time': 'ev-whistle',
+  sub: 'ev-whistle', tactics: 'ev-whistle', instruction: 'ev-whistle', kickoff: 'ev-whistle', 'half-time': 'ev-whistle',
   'full-time': 'ev-whistle', 'extra-time': 'ev-whistle', penalties: 'ev-whistle',
   'penalty-scored': 'ev-goal', 'penalty-missed': 'ev-yellow', 'shootout-end': 'ev-goal',
 };
@@ -1024,8 +1150,19 @@ function renderPitch() {
       if (line.yellow > 0) marks.push('<span class="mark-yellow"></span>');
       chip.innerHTML = `
         <span class="chip-marks">${marks.join('')}</span>
+        ${instrMarks(entry.instr)}
         <span class="chip-rating r-${ratingBand(line.rating)}">${line.rating.toFixed(1)}</span>
         <span class="chip-name" title="${esc(entry.player.name)}">${esc(surname(entry.player.name))}</span>`;
+      if (sideKey === m.userSide) {
+        chip.classList.add('own-chip');
+        if (m.paused && !m.sim.finished) chip.classList.add('clickable-chip');
+        chip.addEventListener('click', () => {
+          if (!m.paused || m.sim.finished) return;
+          const id = entry.player.id ?? entry.player.name;
+          m.instrSel = m.instrSel === id ? null : id;
+          renderMatchInstr();
+        });
+      }
       const prev = m.prevGoals.get(line.id) ?? 0;
       if (line.goals > prev) {
         m.prevGoals.set(line.id, line.goals);
@@ -1062,9 +1199,11 @@ function togglePause() {
     return;
   }
   m.paused = false;
+  m.instrSel = null;
   $('pause-btn').textContent = 'Pause';
   $('pause-reason').textContent = '';
   $('sub-panel').hidden = true;
+  renderPitch();
   scheduleTick();
 }
 
@@ -1100,6 +1239,38 @@ function renderSubPanel() {
     li.addEventListener('click', () => { m.subSel.on = li.dataset.on; renderSubPanel(); });
   }
   $('make-sub-btn').disabled = !(m.subSel.off && m.subSel.on && side.subsUsed < 3);
+  renderMatchInstr();
+}
+
+// Mid-match instruction panel for the clicked own-side player (EE-4).
+function renderMatchInstr() {
+  const m = state.match;
+  const box = $('match-instr');
+  if (!m || m.instrSel == null) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const side = m.sim.sides[m.userSide];
+  const entry = side.onPitch.find((e) => (e.player.id ?? e.player.name) === m.instrSel);
+  if (!entry) {
+    m.instrSel = null;
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = instrPanelHtml(entry.slot, entry.player, entry.instr ?? {});
+  bindInstrPanel(box, {
+    onClose: () => { m.instrSel = null; renderMatchInstr(); },
+    onSet: (axis, value) => {
+      const res = m.sim.setInstruction(m.userSide, m.instrSel, axis, value);
+      if (res.ok && res.changed) {
+        appendCommentary(m.sim.events[m.sim.events.length - 1]);
+      }
+      renderPitch();
+      renderMatchInstr();
+    },
+  });
 }
 
 function makeUserSub() {
@@ -1201,6 +1372,17 @@ function applyMatchTactics() {
     renderMatchPlayerTable();
   }
 }
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (state.match?.instrSel != null) {
+    state.match.instrSel = null;
+    renderMatchInstr();
+  } else if (state.instrSel != null) {
+    state.instrSel = null;
+    renderHub();
+  }
+});
+
 $('match-formation').addEventListener('change', applyMatchTactics);
 $('match-mentality').addEventListener('change', applyMatchTactics);
 

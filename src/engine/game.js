@@ -7,7 +7,10 @@
 
 import { createRng, hashString } from './rng.js';
 import { MatchSim, simulateMatch } from './match.js';
-import { selectXI, overallRating, FORMATIONS, MENTALITIES } from './team.js';
+import {
+  selectXI, overallRating, FORMATIONS, MENTALITIES,
+  INSTRUCTION_AXES, defaultInstructions, remapInstructions, instructionPreset, unitOf,
+} from './team.js';
 import {
   developPlayer, isAvailable, ability, detailPlayer, expandAttributes,
 } from './players.js';
@@ -41,6 +44,10 @@ function forEachPlayer(data, fn) {
   }
 }
 
+function defaultTactics() {
+  return { formation: '4-4-2', mentality: 'normal', instructions: defaultInstructions() };
+}
+
 const MIGRATIONS = {
   // v6 → v7 (EE-2): detailed positions and secondaries on every player.
   6: (data) => {
@@ -52,6 +59,11 @@ const MIGRATIONS = {
     forEachPlayer(data, migratePlayerAttributes);
     data.version = 8;
   },
+  // v8 → v9 (EE-4): per-slot player instructions on the saved tactics.
+  8: (data) => {
+    data.tactics.instructions ??= defaultInstructions();
+    data.version = 9;
+  },
 };
 
 const TICKET_PRICE = 14;
@@ -59,7 +71,7 @@ const WIN_MORALE = 8;
 const DRAW_MORALE = 1;
 const LOSS_MORALE = -6;
 const SACK_THRESHOLD = 15;
-const SAVE_VERSION = 8;
+const SAVE_VERSION = 9;
 const JOB_REACH = 15; // how far above your reputation a club will hire
 const SCOUT_FEE = 15000;
 const MASK_HALF_WIDTH = 8; // unscouted attributes show as a range this wide
@@ -108,7 +120,7 @@ export class Game {
     this.pendingOffers = []; // AI offers for the user's players
     this.nextOfferId = 1;
     this.board = { confidence: 60 };
-    this.tactics = { formation: '4-4-2', mentality: 'normal' };
+    this.tactics = defaultTactics();
     this.history = [];
     this.youthSeq = 0;
     this.sacked = false;
@@ -228,12 +240,27 @@ export class Game {
 
   aiSetup(clubName) {
     const club = this.getClub(clubName);
+    // The user's club plays delegated (auto-simulated) matches under its
+    // saved tactics and instructions (PTI-05); AI clubs derive their
+    // instructions from mentality (PTI-06).
+    if (clubName === this.clubName && !this.sacked) {
+      return {
+        name: club.name,
+        shortName: club.shortName,
+        players: club.players,
+        formation: this.tactics.formation,
+        mentality: this.tactics.mentality,
+        instructions: this.tactics.instructions,
+      };
+    }
+    const formation = '4-4-2';
     return {
       name: club.name,
       shortName: club.shortName,
       players: club.players,
-      formation: '4-4-2',
+      formation,
       mentality: 'normal',
+      instructions: FORMATIONS[formation].slots.map((s) => instructionPreset('normal', s.pos)),
     };
   }
 
@@ -247,6 +274,7 @@ export class Game {
       bench: picked.bench,
       formation: picked.formation ?? this.tactics.formation,
       mentality: this.tactics.mentality,
+      instructions: this.tactics.instructions,
     };
   }
 
@@ -532,7 +560,7 @@ export class Game {
     this.jobOffers = [];
     this.pendingJobOffer = null;
     this.board = { confidence: 55 };
-    this.tactics = { formation: '4-4-2', mentality: 'normal' };
+    this.tactics = defaultTactics();
     this.news('A new chapter',
       `${this.managerName} leaves ${oldClub} behind and takes charge of ${clubName}.`);
     return { ok: true };
@@ -565,7 +593,7 @@ export class Game {
     const oldClub = this.clubName;
     this.clubName = offer.club;
     this.board = { confidence: 60 };
-    this.tactics = { formation: '4-4-2', mentality: 'normal' };
+    this.tactics = defaultTactics();
     this.jobOffers = [];
     this.news('A step up',
       `${this.managerName} swaps ${oldClub} for ${offer.club}. Big shoes to fill.`);
@@ -1102,8 +1130,30 @@ export class Game {
   setTactics({ formation, mentality }) {
     if (formation && !FORMATIONS[formation]) throw new Error(`unknown formation ${formation}`);
     if (mentality && !MENTALITIES.includes(mentality)) throw new Error(`unknown mentality ${mentality}`);
-    if (formation) this.tactics.formation = formation;
+    if (formation && formation !== this.tactics.formation) {
+      this.tactics.instructions = remapInstructions(
+        this.tactics.formation, this.tactics.instructions, formation);
+      this.tactics.formation = formation;
+    }
     if (mentality) this.tactics.mentality = mentality;
+  }
+
+  // Set one instruction axis on a formation slot (EE-4). Slot 0 is always
+  // the keeper, whose instructions are fixed.
+  setSlotInstruction(slotIndex, axis, value) {
+    const slots = FORMATIONS[this.tactics.formation].slots;
+    if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= slots.length) {
+      throw new Error(`invalid slot index ${slotIndex}`);
+    }
+    if (!INSTRUCTION_AXES[axis]?.includes(value)) {
+      throw new Error(`invalid instruction ${axis}=${value}`);
+    }
+    if (unitOf(slots[slotIndex].pos) === 'GK') {
+      throw new Error('keeper instructions are fixed');
+    }
+    this.tactics.instructions[slotIndex] = {
+      ...this.tactics.instructions[slotIndex], [axis]: value,
+    };
   }
 
   serialize() {

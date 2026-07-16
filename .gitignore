@@ -15,6 +15,7 @@ Thumbs.db
 # Puppeteer / browser-smoke artefacts (kept out of git)
 *.png
 !design/screenshots/*.png
+.playtest-results/
 
 # Agent session/plan metadata (not project code)
 .plans/

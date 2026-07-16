@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>12 · Match Tactics — Champman Design</title>
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">⚽ CHAMPMAN</span>
+    <span class="crumb"><a href="index.html">Design</a> › 12 · Match Tactics</span>
+    <span class="spacer"></span>
+    <span class="meta">Shipped · 2026-07-16</span>
+  </header>
+
+  <main class="wrap">
+    <nav class="side-nav">
+      <h3>Overview</h3>
+      <a href="index.html">Home</a>
+      <a href="01-requirements.html">01 · Requirements</a>
+      <h3>Design</h3>
+      <a href="02-architecture.html">02 · Architecture</a>
+      <a href="03-data-model.html">03 · Data Model</a>
+      <a href="04-engine-specs.html">04 · Engine Specs</a>
+      <a href="05-ui-design.html">05 · UI Design</a>
+      <a href="05b-table-layouts.html">05b · Table Layouts</a>
+      <h3>Delivery</h3>
+      <a href="06-test-plan.html">06 · Test Plan</a>
+      <a href="07-project-plan.html">07 · Project Plan</a>
+      <a href="08-risk-register.html">08 · Risks</a>
+      <a href="09-roadmap.html">09 · Roadmap</a>
+      <a href="10-horizon1-specs.html">10 · Horizon 1 Specs</a>
+      <a href="11-engine-evolution.html">11 · Engine Evolution</a>
+      <a href="12-match-tactics.html" class="active">12 · Match Tactics</a>
+    </nav>
+
+    <article class="doc">
+      <h1>12 · Match Tactics Re-Design</h1>
+      <p class="subtitle">Drag players between positions — on the tactics screen and live during a match — and make the paused match a proper tactics view: subs, formation, mentality, instructions, and positioning in one place</p>
+
+      <div class="callout gold">
+        <span class="label">✅ Shipped 2026-07-16</span>
+        <p>Built as designed, same day: pointer-drag swaps on both pitches,
+        <code>MatchSim.swapPositions</code> with five dedicated tests (218 total), the
+        paused-match tactics board, and drag flows exercised by real mouse events in the
+        browser smoke. The bench-drag substitution remains the named follow-up.</p>
+      </div>
+
+      <h2>1. Problem</h2>
+      <p>EE-2 gave formations real geometry and EE-4 made players clickable, but
+      <em>positioning</em> is still indirect: the only way to put a specific player in a
+      specific slot is the click-two-rows swap on the tactics tables, and mid-match there
+      is no way at all — a formation change auto-remaps players and the manager cannot
+      correct it. The pause panel groups subs and dropdowns away from the pitch, so the
+      pitch reads as a display, not a control surface.</p>
+
+      <h2>2. Requirements</h2>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Requirement</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>DRG-01</td><td>On the tactics-screen pitch, dragging a player marker onto another swaps the two players between those slots. Instructions stay with the slot (the EE-4 shirt rule).</td><td>Must</td></tr>
+          <tr><td>DRG-02</td><td>On the match pitch, while paused, the user's markers are draggable the same way; the swap takes effect immediately in the running sim and is logged in the commentary.</td><td>Must</td></tr>
+          <tr><td>DRG-03</td><td>The keeper cannot be dragged, nor dropped onto: goalkeeping changes only happen through substitutions or the emergency-keeper rule.</td><td>Must</td></tr>
+          <tr><td>DRG-04</td><td>Drag must coexist with click: press-and-release without movement is a click (opens the instruction panel); movement beyond a small threshold is a drag and suppresses the click.</td><td>Must</td></tr>
+          <tr><td>DRG-05</td><td>Engine API: <code>MatchSim.swapPositions(sideKey, idA, idB)</code> — validated, deterministic, zero RNG draws, machine-readable <code>position</code> event.</td><td>Must</td></tr>
+          <tr><td>DRG-06</td><td>The paused match presents one coherent tactics panel: formation, mentality, the selected player's instructions, and substitutions, with the live pitch as the positioning surface alongside.</td><td>Must</td></tr>
+          <tr><td>DRG-07</td><td>Formation change + drag flow: after a mid-match formation switch auto-remaps players, dragging corrects any placement; instructions still follow slots per the EE-4 remap/orphan rules.</td><td>Must</td></tr>
+          <tr><td>DRG-08</td><td>Visual affordances: dragged marker follows the pointer; a valid drop target highlights; invalid targets (keeper, opposition) do not.</td><td>Should</td></tr>
+        </tbody>
+      </table>
+
+      <h2>3. Interaction Design</h2>
+      <div class="diagram">
+<pre>
+Pointer state machine (per own-side marker, active whenever the pitch is editable —
+always on the tactics screen; only while paused on match day):
+
+  pointerdown ──► armed (record x,y; capture pointer)
+  armed ── move &lt; 6px ──► pointerup ──► CLICK  → instruction panel (EE-4)
+  armed ── move ≥ 6px ──► DRAGGING (marker follows pointer, z-top, ghost left in slot)
+  DRAGGING ── over own outfield marker ──► target highlights (gold ring)
+  DRAGGING ── pointerup on target ──► SWAP (players exchange slots; instructions stay)
+  DRAGGING ── pointerup elsewhere / Esc ──► revert, no change
+</pre>
+      </div>
+      <ul>
+        <li><strong>Swap, not free placement.</strong> Slots are the formation's geometry;
+        players move between slots. Dropping on empty grass does nothing — this keeps the
+        XI always valid (11 slots, one keeper) with no new failure modes.</li>
+        <li><strong>Instructions stay with the slot.</strong> Dragging your winger to
+        right-back leaves the "forward runs" instruction on the right-back slot — the same
+        rule substitutions and formation remaps already follow, so there is exactly one
+        mental model.</li>
+        <li><strong>Familiarity feedback.</strong> After a swap, the existing amber
+        out-of-position tags and the familiarity multiplier apply unchanged; the marker
+        label (slot code) is the truth of where each man now plays.</li>
+      </ul>
+
+      <h3>3.1 The paused match as a tactics view</h3>
+      <div class="diagram">
+<pre>
+MATCH DAY (paused) — left panel becomes the tactics board; pitch is the control surface
+┌───────────────────────────────────────┐  ┌───────────────────────────────┐
+│ TACTICS — MAKE YOUR CHANGES           │  │  (right: live pitch)          │
+│ Formation [5-3-2 ▾] Mentality [def ▾] │  │   · own markers draggable     │
+│ ─────────────────────────────────────  │  │   · click marker → panel      │
+│ ▸ DR · CHARLES     (selected marker)  │  │   · arrows show instructions  │
+│   Forward runs  [FWD][bal][hold]      │  │   · drop target rings gold    │
+│   Pressing      [high][NORM][deep]    │  │                               │
+│ ─────────────────────────────────────  │  └───────────────────────────────┘
+│ SUBSTITUTION (2 left)                 │
+│  on pitch…            bench…          │
+│  [MAKE SUBSTITUTION]                  │
+└───────────────────────────────────────┘
+Commentary: 34' Charles and Curcic swap positions (DR ↔ ML)
+</pre>
+      </div>
+      <p>No new screen: the pause panel is retitled and ordered as a tactics board
+      (tactics → instructions → subs), and the pitch alongside it becomes directly
+      editable. "Jumping into tactics" is simply pausing.</p>
+
+      <h2>4. Engine Design</h2>
+      <pre><code>// match.js
+swapPositions(sideKey, idA, idB)
+  → { ok } | { ok: false, error }
+  · both players on the pitch, distinct; neither slot is GK
+  · entries exchange slot AND instr/mods (instructions belong to the slot)
+  · stat-line .slot fields updated; slotCounts unchanged (same slot set)
+  · logs type 'position', data { aId, bId, aSlot, bSlot } (post-swap slots)
+  · zero RNG draws — replaying a scripted swap is byte-identical</code></pre>
+      <p>Pre-match, no engine change is needed: the tactics screen already owns the
+      lineup, so a drag is the existing starters-swap expressed on the pitch instead of
+      the tables.</p>
+
+      <h2>5. Test Plan</h2>
+      <table class="grid">
+        <thead><tr><th>Test</th><th>Type</th><th>Asserts</th></tr></thead>
+        <tbody>
+          <tr><td>swap semantics</td><td>unit</td><td>Slots and instructions exchange; stat-line slots update; slot counts unchanged.</td></tr>
+          <tr><td>validation</td><td>unit</td><td>Unknown side/player, same player, finished match, keeper slot all refused with descriptive errors.</td></tr>
+          <tr><td>determinism</td><td>determinism</td><td>Scripted mid-match swap replays byte-identically; a swap draws no RNG.</td></tr>
+          <tr><td>swap changes play</td><td>unit</td><td>Swapping a strong DF with a weak ST changes subsequent unit strengths (familiarity + contribution move).</td></tr>
+          <tr><td>drag on tactics pitch</td><td>browser smoke</td><td>Mouse-drag DR marker onto ML marker → slot labels swap in the XI table.</td></tr>
+          <tr><td>drag on match pitch</td><td>browser smoke</td><td>Paused: drag own marker onto another → commentary logs the swap; click-without-drag still opens the instruction panel.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>6. Out of Scope / Cut Line</h2>
+      <table class="grid">
+        <thead><tr><th>Not building</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Free-form marker placement</td><td>Slot geometry is the formation; free placement belongs to a future formation editor.</td></tr>
+          <tr><td>Drag bench player onto the pitch to substitute</td><td>Nice-to-have; the sub lists already work. Named follow-up if the drag plumbing proves itself.</td></tr>
+          <tr><td>Touch-screen long-press affordances</td><td>Pointer events cover touch basically; dedicated mobile polish is a separate pass.</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Cut line:</strong> DRG-01/03/04/05 (tactics-screen drag + engine API)
+      ship even if the match-day drag slips; the pause-panel retitle is trivial and ships
+      regardless.</p>
+
+      <h2>7. Acceptance</h2>
+      <div class="callout blue">
+        <span class="label">Done when</span>
+        <ol>
+          <li>A player can be dragged between positions on the tactics screen and, while
+          paused, on the live match pitch — with the swap visible in slot labels,
+          familiarity tags, and (in-match) the commentary.</li>
+          <li>Change formation mid-match, then drag players into the exact slots you want
+          — instructions behave per the EE-4 slot rules throughout.</li>
+          <li>Click-to-instruct still works exactly as before.</li>
+          <li>The full suite and browser smoke are green; a scripted career replays
+          identically.</li>
+        </ol>
+      </div>
+
+      <p style="margin-top:30px"><a href="11-engine-evolution.html">← 11 · Engine Evolution</a> · <a href="index.html">Back to index</a></p>
+    </article>
+  </main>
+
+  <footer>Champman design documentation · 12 · Match Tactics</footer>
+</body>
+</html>

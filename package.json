@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test 'test/*.test.js'",
+    "test:play": "node --test 'test/playtest/*.test.js'",
+    "test:ui": "node test/playtest/browser-playtest.js",
+    "test:full": "npm test && npm run test:play && npm run test:ui",
+    "playtest:report": "node tools/playtest-report.js",
     "golden:update": "node tools/update-goldens.js",
     "serve": "python3 -m http.server 8123"
   },

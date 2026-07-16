@@ -117,6 +117,66 @@ function bindInstrPanel(container, { onSet, onClose }) {
   }
 }
 
+// Pointer-based drag-to-swap for pitch markers (12 \u00b7 DRG-01/02/04).
+// Press-and-release without movement is a click; movement beyond the
+// threshold becomes a drag. While dragging, the marker follows the
+// pointer and a valid drop target (another marker passing targetFilter)
+// gets a highlight ring. Dropping elsewhere reverts with no change.
+const DRAG_THRESHOLD = 6;
+
+function enableChipDrag(chip, { draggable, onClick, onDrop, targetFilter }) {
+  if (!draggable) {
+    if (onClick) chip.addEventListener('click', onClick);
+    return;
+  }
+  chip.classList.add('draggable-chip');
+  chip.addEventListener('pointerdown', (down) => {
+    if (down.button !== 0) return;
+    down.preventDefault();
+    let dragging = false;
+    let target = null;
+    const startX = down.clientX;
+    const startY = down.clientY;
+    chip.setPointerCapture(down.pointerId);
+
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      if (!dragging) {
+        dragging = true;
+        chip.classList.add('dragging');
+      }
+      chip.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      const under = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-drag-id]');
+      const next = under && under !== chip && targetFilter(under) ? under : null;
+      if (next !== target) {
+        target?.classList.remove('drop-target');
+        next?.classList.add('drop-target');
+        target = next;
+      }
+    };
+    const finish = (ev) => {
+      chip.removeEventListener('pointermove', move);
+      chip.removeEventListener('pointerup', finish);
+      chip.removeEventListener('pointercancel', finish);
+      chip.classList.remove('dragging');
+      chip.style.transform = '';
+      const dropped = target;
+      target?.classList.remove('drop-target');
+      target = null;
+      if (!dragging) {
+        if (ev.type === 'pointerup') onClick?.();
+      } else if (dropped) {
+        onDrop(dropped);
+      }
+    };
+    chip.addEventListener('pointermove', move);
+    chip.addEventListener('pointerup', finish);
+    chip.addEventListener('pointercancel', finish);
+  });
+}
+
 // Team-level sanity readout derived from the instruction set (PTI-07).
 function describeBalance(instructions, formation) {
   const slots = FORMATIONS[formation].slots;
@@ -284,7 +344,12 @@ function renderStartSquad(team) {
 
 function startCareer(clubName) {
   const managerName = $('manager-name').value.trim() || 'The Boss';
-  state.game = new Game({ managerName, clubName });
+  const rawSeed = new URLSearchParams(window.location.search).get('seed');
+  const parsedSeed = rawSeed === null ? null : Number(rawSeed);
+  const seed = Number.isInteger(parsedSeed) && parsedSeed >= 0 && parsedSeed <= 0xffffffff
+    ? parsedSeed >>> 0
+    : undefined;
+  state.game = new Game({ managerName, clubName, ...(seed === undefined ? {} : { seed }) });
   state.lineup = null;
   enterHub('inbox');
   saveGame('Career started');
@@ -487,7 +552,7 @@ function renderTactics() {
   const chips = lineup.starters.map((s, i) => {
     const { x, y } = slots[i] ?? { x: 50, y: 50 };
     const sel = state.instrSel === i;
-    return `<div class="chip tac-chip ${sel ? 'selected' : ''}" data-instr-slot="${i}"
+    return `<div class="chip tac-chip ${sel ? 'selected' : ''}" data-instr-slot="${i}" data-drag-id="${i}"
       style="left:${(8 + x * 0.84).toFixed(1)}%; top:${(92 - y * 0.82).toFixed(1)}%">
       ${instrMarks(g.tactics.instructions[i])}
       <span class="chip-slot">${s.slot}</span>
@@ -500,7 +565,7 @@ function renderTactics() {
     : '<p class="hint">Click a player on the pitch to set forward runs and pressing. Arrows show current instructions: \u25b2 forward runs \u00b7 \u25bc hold \u00b7 \u21c8 press high \u00b7 \u21ca sit deep.</p>';
 
 $('hub-content').innerHTML = `<h1>Tactics</h1>
-    <p class="hint">Click two players to swap them. An amber tag (e.g. MC ▸ DM) means out of position — the player contributes less there.</p>
+    <p class="hint">Drag a player on the pitch to swap positions, or click two rows below to swap them. An amber tag (e.g. MC ▸ DM) means out of position — the player contributes less there.</p>
     <div class="panel tactics-controls">
       <label>Formation <select id="formation-select">${formationOpts}</select></label>
       <label>Mentality <select id="mentality-select">${mentalityOpts}</select></label>
@@ -548,10 +613,22 @@ $('hub-content').innerHTML = `<h1>Tactics</h1>
   });
 
   for (const chip of $('hub-content').querySelectorAll('[data-instr-slot]')) {
-    chip.addEventListener('click', () => {
-      const idx = Number(chip.dataset.instrSlot);
-      state.instrSel = state.instrSel === idx ? null : idx;
-      renderHub();
+    const idx = Number(chip.dataset.instrSlot);
+    enableChipDrag(chip, {
+      draggable: unitOf(lineup.starters[idx].slot) !== 'GK',
+      onClick: () => {
+        state.instrSel = state.instrSel === idx ? null : idx;
+        renderHub();
+      },
+      targetFilter: (el) =>
+        unitOf(lineup.starters[Number(el.dataset.dragId)].slot) !== 'GK',
+      onDrop: (el) => {
+        const lists = { starters: lineup.starters, bench: lineup.bench, reserves: [] };
+        swapPlayers(lists,
+          { list: 'starters', index: idx },
+          { list: 'starters', index: Number(el.dataset.dragId) });
+        renderHub();
+      },
     });
   }
   bindInstrPanel($('instr-panel'), {
@@ -1078,7 +1155,7 @@ function updateScoreboard() {
 
 const EVENT_CLASSES = {
   goal: 'ev-goal', red: 'ev-red', yellow: 'ev-yellow', injury: 'ev-red',
-  sub: 'ev-whistle', tactics: 'ev-whistle', instruction: 'ev-whistle', kickoff: 'ev-whistle', 'half-time': 'ev-whistle',
+  sub: 'ev-whistle', tactics: 'ev-whistle', instruction: 'ev-whistle', position: 'ev-whistle', kickoff: 'ev-whistle', 'half-time': 'ev-whistle',
   'full-time': 'ev-whistle', 'extra-time': 'ev-whistle', penalties: 'ev-whistle',
   'penalty-scored': 'ev-goal', 'penalty-missed': 'ev-yellow', 'shootout-end': 'ev-goal',
 };
@@ -1155,12 +1232,31 @@ function renderPitch() {
         <span class="chip-name" title="${esc(entry.player.name)}">${esc(surname(entry.player.name))}</span>`;
       if (sideKey === m.userSide) {
         chip.classList.add('own-chip');
-        if (m.paused && !m.sim.finished) chip.classList.add('clickable-chip');
-        chip.addEventListener('click', () => {
-          if (!m.paused || m.sim.finished) return;
-          const id = entry.player.id ?? entry.player.name;
-          m.instrSel = m.instrSel === id ? null : id;
-          renderMatchInstr();
+        const id = entry.player.id ?? entry.player.name;
+        chip.dataset.dragId = id;
+        const editable = () => m.paused && !m.sim.finished;
+        if (editable()) chip.classList.add('clickable-chip');
+        enableChipDrag(chip, {
+          draggable: editable() && unitOf(entry.slot) !== 'GK',
+          onClick: () => {
+            if (!editable()) return;
+            m.instrSel = m.instrSel === id ? null : id;
+            renderMatchInstr();
+          },
+          targetFilter: (el) => {
+            const other = m.sim.sides[m.userSide].onPitch.find(
+              (e) => (e.player.id ?? e.player.name) === el.dataset.dragId);
+            return other && unitOf(other.slot) !== 'GK';
+          },
+          onDrop: (el) => {
+            const res = m.sim.swapPositions(m.userSide, id, el.dataset.dragId);
+            if (res.ok) {
+              appendCommentary(m.sim.events[m.sim.events.length - 1]);
+            }
+            renderPitch();
+            renderSubPanel();
+            renderMatchPlayerTable();
+          },
         });
       }
       const prev = m.prevGoals.get(line.id) ?? 0;

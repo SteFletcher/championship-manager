@@ -790,6 +790,9 @@ export class Game {
     if (!found) return { status: 'rejected', reason: 'unknown player' };
     const { player, club } = found;
     if (club?.name === this.clubName) return { status: 'rejected', reason: 'already yours' };
+    if (this.club.players.some((candidate) => candidate.name === player.name)) {
+      return { status: 'rejected', reason: 'a player with that name is already in the squad' };
+    }
 
     if (club === null) return this.#signFreeAgent(player);
 
@@ -892,6 +895,9 @@ export class Game {
     }
     const player = this.club.players.find((p) => p.id === offer.playerId);
     const buyer = this.getClub(offer.from);
+    if (player && buyer?.players.some((candidate) => candidate.name === player.name)) {
+      return { ok: false, reason: 'destination squad already has a player with that name' };
+    }
     if (!player || !canRelease(this.club, player)) {
       return { ok: false, reason: 'squad too thin to sell' };
     }
@@ -910,7 +916,8 @@ export class Game {
     const seller = this.rng.pick(sellers);
     const targets = seller.players
       .map((p) => ({ p, interest: aiInterest(buyer, p) }))
-      .filter((t) => t.interest > 0.2 && canRelease(seller, t.p));
+      .filter((t) => t.interest > 0.2 && canRelease(seller, t.p) &&
+        !buyer.players.some((candidate) => candidate.name === t.p.name));
     if (targets.length === 0) return;
     const target = this.rng.weightedPick(
       targets.map((t) => ({ item: t.p, weight: t.interest }))

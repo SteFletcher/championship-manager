@@ -491,6 +491,33 @@ export class MatchSim {
     return { ok: true, changed: true };
   }
 
+  // Public: swap two on-pitch players between their slots (12 · DRG-05).
+  // Instructions belong to the slot, so each player takes over the slot's
+  // existing instructions. The keeper's slot is off-limits — goalkeeping
+  // changes go through substitutions or the emergency-keeper rule.
+  // Draws no RNG; a scripted swap replays byte-identically.
+  swapPositions(sideKey, idA, idB) {
+    const side = this.sides[sideKey];
+    if (!side) return { ok: false, error: 'unknown side' };
+    if (this.finished) return { ok: false, error: 'match is over' };
+    if (idA === idB) return { ok: false, error: 'pick two different players' };
+    const a = side.onPitch.find((e) => pid(e.player) === idA);
+    const b = side.onPitch.find((e) => pid(e.player) === idB);
+    if (!a || !b) return { ok: false, error: 'player is not on the pitch' };
+    if (unitOf(a.slot) === 'GK' || unitOf(b.slot) === 'GK') {
+      return { ok: false, error: 'the keeper stays in goal — substitute him instead' };
+    }
+    [a.slot, b.slot] = [b.slot, a.slot];
+    [a.instr, b.instr] = [b.instr, a.instr];
+    [a.mods, b.mods] = [b.mods, a.mods];
+    this.#line(side, a.player).slot = a.slot;
+    this.#line(side, b.player).slot = b.slot;
+    this.#log(Math.max(1, this.minute), 'position', sideKey, a.player,
+      `${a.player.name} and ${b.player.name} swap positions (${a.slot} ↔ ${b.slot})`,
+      { aId: idA, bId: idB, aSlot: a.slot, bSlot: b.slot });
+    return { ok: true };
+  }
+
   // Re-derive an AI side's instructions from its (new) mentality (PTI-06).
   #applyInstructionPreset(side) {
     for (const e of side.onPitch) {

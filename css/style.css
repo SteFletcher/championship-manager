@@ -906,3 +906,22 @@ table { border-collapse: collapse; width: 100%; }
 }
 
 #match-instr { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); }
+
+/* --- Drag-to-swap markers (12 · Match Tactics) ---------------------------- */
+
+.draggable-chip { cursor: grab; touch-action: none; user-select: none; }
+
+.chip.dragging {
+  pointer-events: none;
+  z-index: 20;
+  cursor: grabbing;
+  opacity: 0.9;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6));
+}
+
+.chip.drop-target .chip-slot,
+.chip.drop-target .chip-rating {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  background: var(--gold);
+}

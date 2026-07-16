@@ -10,7 +10,7 @@ import { strict as assert } from 'node:assert';
 const BROWSER =
   process.argv[2] ??
   '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
-const URL = 'http://127.0.0.1:8123/';
+const URL = process.env.CHAMPMAN_TEST_URL ?? 'http://127.0.0.1:8123/';
 const SHOTS = process.env.SHOT_DIR ?? '.';
 
 const browser = await puppeteer.launch({
@@ -124,6 +124,31 @@ try {
   const balance = await page.$eval('#balance-strip', (el) => el.textContent);
   assert.ok(balance.includes('right flank'), `balance strip: ${balance}`);
   console.log('✔ EE-4 tactics: click panel sets forward runs, arrow + balance strip update');
+
+  // 12 · DRG-01: drag the DR marker onto the DL marker — players swap
+  // slots, and the forward-runs instruction stays with the DR slot.
+  const dragChip = async (fromSel, toSel) => {
+    const from = await (await page.$(fromSel)).boundingBox();
+    const to = await (await page.$(toSel)).boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+    await page.mouse.up();
+  };
+  const starterName = (i) =>
+    page.$eval(`[data-swap="starters:${i}"] td:nth-child(2)`,
+      (el) => el.childNodes[0].textContent.trim());
+  const drBefore = await starterName(1);
+  const dlBefore = await starterName(4);
+  await dragChip('[data-instr-slot="1"]', '[data-instr-slot="4"]');
+  await page.waitForFunction((expected) => {
+    const row = document.querySelector('[data-swap="starters:1"] td:nth-child(2)');
+    return row && row.childNodes[0].textContent.trim() === expected;
+  }, {}, dlBefore);
+  assert.equal(await starterName(4), drBefore, 'drag did not swap the players');
+  const arrowStays = await page.$('[data-instr-slot="1"] .ia-fwd');
+  assert.ok(arrowStays, 'forward-runs instruction must stay with the DR slot after a drag');
+  console.log('✔ 12: drag on the tactics pitch swaps players; instruction stays with the slot');
   await shot('04-tactics');
 
   await page.click('.nav-btn[data-screen="table"]');
@@ -247,6 +272,19 @@ try {
   const arrowShown = await page.$$eval('.own-chip .ia-high', (els) => els.length);
   assert.ok(arrowShown >= 1, 'no press-high arrow on the pitch');
   console.log('✔ EE-4 match: paused click panel sets pressing, commentary + arrow confirm');
+
+  // 12 · DRG-02: drag one own outfield marker onto another while paused —
+  // the swap happens live in the sim and hits the commentary.
+  const own = await page.$$('.own-chip');
+  const boxA = await own[3].boundingBox();
+  const boxB = await own[7].boundingBox();
+  await page.mouse.move(boxA.x + boxA.width / 2, boxA.y + boxA.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(boxB.x + boxB.width / 2, boxB.y + boxB.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForFunction(() =>
+    document.querySelector('#commentary li:last-child')?.textContent.includes('swap positions'));
+  console.log('✔ 12: drag on the match pitch swaps positions live (commentary confirms)');
   await shot('07-match-paused-sub');
 
   await page.click('#pause-btn'); // resume

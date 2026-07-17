@@ -27,8 +27,38 @@ import {
 import { attrOf, unitContribution } from './players.js';
 
 const HOME_ADVANTAGE = 1.12; // multiplier on home midfield/attack effectiveness
-const BASE_CHANCE_PROB = 0.28; // chance of a shot in an attacking minute
 const MAX_SUBS = 3;
+
+// --- Ball model (EE-5) -------------------------------------------------------
+// The ball is in one of three zones (home's D / M / home's A) and belongs
+// to one side. Each minute runs TICKS_PER_MINUTE transition rolls; chances
+// can only arise with the ball in the owner's attacking third. The BASE_*
+// weights are the calibration surface: they reproduce the pre-EE-5
+// scoreline profile (goals/match, home advantage, shots/side) while
+// letting shots cluster into spells of pressure.
+const TICKS_PER_MINUTE = 3;
+const BASE_ADVANCE = 0.34;
+const BASE_HOLD = 0.38;
+const FINAL_THIRD_STICKINESS = 1.35; // attackers recycle the ball in the box
+const BASE_TURNOVER = 0.28;
+const TICK_CHANCE = 0.17; // per final-third tick, before quality mods
+// Momentum (EE-5): the last ten minutes of territory feed the advance
+// roll, so spells of pressure persist at the scale a watching manager
+// sees. Strictly bounded, and it never touches chance conversion — shots
+// cluster, goals stay near-Poisson.
+const MOMENTUM_WINDOW = 10; // minutes
+const MOMENTUM_PUSH = 0.12; // max ± effect on advance weight
+const ZONES = ['D', 'M', 'A']; // always from HOME's perspective
+
+// Mentality acts on ball flow (EE-5): attackers push forward and hold
+// less; defensive sides advance less but are harder to dislodge in their
+// own third. The old chance-side concede modifier survives on the
+// final-third chance roll (attacking sides leave space behind).
+const MENTALITY_FLOW = {
+  attacking: { adv: 1.12, hold: 0.95, ownThirdTurn: 1 },
+  normal: { adv: 1, hold: 1, ownThirdTurn: 1 },
+  defensive: { adv: 0.88, hold: 1, ownThirdTurn: 0.92 },
+};
 
 const BASE_RATING = 6.0;
 const RATING = {
@@ -49,10 +79,13 @@ const RATING = {
   penMissed: -0.45,
 };
 
+// Since EE-5 the create side of mentality lives in MENTALITY_FLOW (it
+// shapes how often a side reaches the final third); concede still scales
+// the quality of chances given up once the opponent is there.
 const MENTALITY_MODS = {
-  defensive: { create: 0.85, concede: 0.9 },
-  normal: { create: 1, concede: 1 },
-  attacking: { create: 1.12, concede: 1.08 },
+  defensive: { concede: 0.9 },
+  normal: { concede: 1 },
+  attacking: { concede: 1.08 },
 };
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
@@ -63,6 +96,18 @@ const COMMENTARY = {
     '{team} work it wide and whip in a cross',
     'A slick one-two opens up the {opponent} defence',
     '{player} drives at the back line',
+  ],
+  // Zone-flavoured build-up (EE-5): pool chosen from the flow state, so
+  // the pick itself stays a single draw either way.
+  chanceCamped: [
+    '{team} are camped in the final third — {player} lines one up',
+    'Wave after wave from {team}; {player} takes aim',
+    'The {opponent} defence cannot clear — {player} pounces',
+  ],
+  chanceBreak: [
+    '{team} break from deep at pace — {player} leads the charge',
+    'A lightning counter from {team}! {player} bears down on goal',
+    '{player} carries it the length of the half on the break',
   ],
   goal: [
     'GOAL! {player} buries it! {team} strike!',
@@ -230,6 +275,11 @@ export class MatchSim {
     this.events = [];
     this.timeline = [];
     this.injuries = [];
+    // EE-5: the ball is somewhere. Zone is always from HOME's perspective
+    // ('A' = home's attacking third); kick-off gives home the ball at M.
+    this.ball = { zone: 'M', owner: 'home' };
+    this.flow = []; // per-tick {minute, tick, zone, owner} — EE-7's camera feed
+    this.zoneTicks = { A: 0, D: 0 }; // territory tally, home perspective
     this.minute = 0;
     this.stoppage = this.rng.int(1, 5);
     this.regulationEnd = 90 + this.stoppage;
@@ -275,8 +325,9 @@ export class MatchSim {
       stats: {
         possession: 0, shots: 0, onTarget: 0, corners: 0,
         fouls: 0, yellowCards: 0, redCards: 0,
+        territoryPct: 0, finalThirdEntries: 0,
       },
-      possessionMinutes: 0,
+      ownedTicks: 0,
       scorers: [],
     };
   }
@@ -625,32 +676,48 @@ export class MatchSim {
   }
 
   // The minute loop is an ordered pipeline of named phases. The order fixes
-  // the RNG draw sequence — AI policies (home, away) → possession →
-  // build-up → discipline (home, away) → injuries (home, away) → chance
-  // creation/resolution — and is load-bearing: reordering phases, or moving
-  // an RNG draw between them, changes every match played from a given seed.
-  // The golden-master suite exists to catch exactly that.
+  // the RNG draw sequence — AI policies (home, away) → ball flow (EE-5:
+  // zone transitions, build-up, chance creation) → discipline (home, away)
+  // → injuries (home, away) — and is load-bearing: reordering phases, or
+  // moving an RNG draw between them, changes every match played from a
+  // given seed. The golden-master suite exists to catch exactly that.
   static MINUTE_PHASES = [
     'halfTimeWhistle',
     'aiPolicies',
-    'possession',
-    'buildUp',
+    'ballFlow',
     'discipline',
     'injuries',
-    'chanceCreation',
     'fatigue',
     'snapshot',
     'clock',
   ];
 
+  // Rolling per-minute territory tallies ({A, D} ticks) for momentum and
+  // the live territory bar; capped at MOMENTUM_WINDOW entries.
+  #terrWindow = [];
+
+  #momentum() {
+    let a = 0;
+    let d = 0;
+    for (const m of this.#terrWindow) {
+      a += m.A;
+      d += m.D;
+    }
+    return (a + d) === 0 ? 0 : (a - d) / (a + d);
+  }
+
+  // Public read for the UI: recent territory as a home-share percentage.
+  recentTerritory() {
+    const m = this.#momentum();
+    return Math.round(50 + m * 50);
+  }
+
   #phases = {
     halfTimeWhistle: (ctx) => this.#phaseHalfTimeWhistle(ctx),
     aiPolicies: (ctx) => this.#phaseAiPolicies(ctx),
-    possession: (ctx) => this.#phasePossession(ctx),
-    buildUp: (ctx) => this.#phaseBuildUp(ctx),
+    ballFlow: (ctx) => this.#phaseBallFlow(ctx),
     discipline: (ctx) => this.#phaseDiscipline(ctx),
     injuries: (ctx) => this.#phaseInjuries(ctx),
-    chanceCreation: (ctx) => this.#phaseChanceCreation(ctx),
     fatigue: (ctx) => this.#phaseFatigue(ctx),
     snapshot: (ctx) => this.#phaseSnapshot(ctx),
     clock: (ctx) => this.#phaseClock(ctx),
@@ -686,24 +753,89 @@ export class MatchSim {
     }
   }
 
-  // Who has the ball this minute: midfield battle plus home advantage.
-  #phasePossession(ctx) {
-    const homeMid = this.#strength(this.sides.home, 'midfield');
-    const awayMid = this.#strength(this.sides.away, 'midfield');
-    ctx.attackerKey = ctx.rng.chance(homeMid / (homeMid + awayMid)) ? 'home' : 'away';
-    ctx.defenderKey = ctx.attackerKey === 'home' ? 'away' : 'home';
-    ctx.att = this.sides[ctx.attackerKey];
-    ctx.def = this.sides[ctx.defenderKey];
-    ctx.att.possessionMinutes++;
+  // The owner's view of the ball zone: home reads it directly; away reads
+  // the mirror (home's D is away's attacking third).
+  #ownerZone(owner = this.ball.owner) {
+    if (owner === 'home') return this.ball.zone;
+    return this.ball.zone === 'A' ? 'D' : this.ball.zone === 'D' ? 'A' : 'M';
   }
 
-  // Quiet build-up play drives passes, tackles and the live ratings.
-  // The defending side's press shifts the attacker's pass completion
-  // (oppPass percentage points, averaged over the pressers on the pitch)
-  // and scales both the tackle-attempt rate and who attempts them (EE-4).
-  #phaseBuildUp(ctx) {
-    const { rng, att, def } = ctx;
-    const passAttempts = rng.int(3, 8);
+  #inFinalThird(owner = this.ball.owner) {
+    return this.#ownerZone(owner) === 'A';
+  }
+
+  // Transition weights for one tick (EE-5 §4.1). Advancing out of your own
+  // third is a midfield contest; breaking into the final third is attack
+  // vs defence. Pressing (EE-4) forces turnovers in the owner's D/M and
+  // eases the path into the final third when sitting deep.
+  #tickWeights(str) {
+    const ownerKey = this.ball.owner;
+    const defKey = ownerKey === 'home' ? 'away' : 'home';
+    const owner = this.sides[ownerKey];
+    const def = this.sides[defKey];
+    const oz = this.#ownerZone();
+    const flow = MENTALITY_FLOW[owner.setup.mentality];
+
+    // Quality ratios are tempered (^0.75): the zone model multiplies more
+    // quality channels than the old single possession coin-flip did, so
+    // each channel must bite less for the same overall strength gradient.
+    const ratio = (a, b) => clamp((2 * a) / (a + b), 0.6, 1.6) ** 0.75;
+    let zoneStep = 1;
+    if (oz === 'D') zoneStep = ratio(str[ownerKey].midfield, str[defKey].midfield);
+    if (oz === 'M') {
+      zoneStep = ratio(str[ownerKey].attack, str[defKey].defense) *
+        // Sitting deep concedes ground into the final third (EE-4 concedeQ
+        // re-expressed spatially; the quality cost lands on the chance roll)
+        // and an attacking opponent leaves space behind to advance into.
+        (1 + (1 - this.#meanMod(def, 'concedeQ')) * 2) *
+        (def.setup.mentality === 'attacking' ? 1.06 : 1);
+    }
+
+    // Keeping the ball is a quality contest: a stronger side in midfield
+    // is dislodged less (this is what makes possession follow strength).
+    const zonePressure = ratio(str[defKey].midfield, str[ownerKey].midfield);
+    // Momentum: a side camped in the opponent's half keeps coming.
+    const m = this.#momentum();
+    const push = 1 + MOMENTUM_PUSH * (ownerKey === 'home' ? m : -m);
+    // Pressers dislodge the ball high up: scale opponent turnovers in
+    // their D/M from the pressing side's tackleW (1.4 all-high → ×1.25).
+    const press = oz === 'A' ? 1 : 1 + (this.#meanMod(def, 'tackleW') - 1) * 0.625;
+    const ownThird = oz === 'D' ? flow.ownThirdTurn : 1;
+
+    // Spells of pressure: once settled in the final third, the attacking
+    // side recycles the ball — this is where shot clustering comes from.
+    const sticky = oz === 'A' ? FINAL_THIRD_STICKINESS : 1;
+    return [
+      { item: 'advance', weight: BASE_ADVANCE * zoneStep * flow.adv * push },
+      { item: 'hold', weight: BASE_HOLD * flow.hold * sticky },
+      { item: 'turnover', weight: BASE_TURNOVER * zonePressure * press * ownThird },
+    ];
+  }
+
+  // Chance quality once the ball is in the owner's final third: shot
+  // frequency scales with attack-vs-defence quality, the defender's
+  // mentality (attackers leave space behind), and sit-deep chance
+  // softening (EE-4 concedeQ).
+  #tickChanceProb(str) {
+    const ownerKey = this.ball.owner;
+    const defKey = ownerKey === 'home' ? 'away' : 'home';
+    const def = this.sides[defKey];
+    const quality = (2 * str[ownerKey].attack) /
+      (str[ownerKey].attack + str[defKey].defense);
+    return clamp(
+      TICK_CHANCE * quality * MENTALITY_MODS[def.setup.mentality].concede *
+        this.#meanMod(def, 'concedeQ'),
+      0.02, 0.35
+    );
+  }
+
+  // One EE-5 tick of quiet play: the owner strings passes, the defender
+  // hunts the ball — the same bookkeeping volumes as the old per-minute
+  // loop, now proportional to held ticks (EE-4 press modifiers intact).
+  #tickBuildUp(rng) {
+    const att = this.sides[this.ball.owner];
+    const def = this.sides[this.ball.owner === 'home' ? 'away' : 'home'];
+    const passAttempts = rng.int(1, 3);
     const pressShift = this.#meanMod(def, 'oppPass') / 100;
     for (let i = 0; i < passAttempts; i++) {
       const passer = this.#pick(att, PASS_WEIGHT, POSITIONS);
@@ -714,13 +846,76 @@ export class MatchSim {
         this.#rate(att, passer.player, RATING.pass);
       }
     }
-    if (rng.chance(clamp(0.35 * this.#meanMod(def, 'tackleW'), 0.05, 0.85))) {
+    if (rng.chance(clamp(0.117 * this.#meanMod(def, 'tackleW'), 0.02, 0.4))) {
       const tackler = this.#pick(def, TACKLE_WEIGHT, ['DF', 'MF', 'FW'], 'tackleW');
       if (tackler && rng.chance(0.45 + (attrOf(tackler.player, 'tackling') / 99) * 0.4)) {
         this.#line(def, tackler.player).tackles++;
         this.#rate(def, tackler.player, RATING.tackle);
       }
     }
+  }
+
+  // The EE-5 minute: TICKS_PER_MINUTE zone-transition rolls. Strengths are
+  // computed once per minute (they only move between minutes — fatigue,
+  // cards, subs). Chances open only in the owner's final third; a spell of
+  // held final-third ticks keeps re-opening the gate, which is where
+  // pressure — and shot clustering — comes from. Conversion per shot is
+  // untouched, so goals stay near-Poisson.
+  #phaseBallFlow(ctx) {
+    const { rng, minute } = ctx;
+    const minuteTerr = { A: 0, D: 0 };
+    const str = {};
+    for (const key of ['home', 'away']) {
+      const side = this.sides[key];
+      str[key] = {
+        midfield: this.#strength(side, 'midfield'),
+        attack: this.#strength(side, 'attack'),
+        defense: this.#strength(side, 'defense'),
+      };
+    }
+
+    for (let tick = 0; tick < TICKS_PER_MINUTE; tick++) {
+      const wasFinalThird = this.#inFinalThird();
+      const roll = rng.weightedPick(this.#tickWeights(str));
+      if (roll === 'advance' && this.#ownerZone() !== 'A') {
+        const dir = this.ball.owner === 'home' ? 1 : -1;
+        this.ball.zone = ZONES[ZONES.indexOf(this.ball.zone) + dir];
+      } else if (roll === 'turnover') {
+        this.ball.owner = this.ball.owner === 'home' ? 'away' : 'home';
+      }
+
+      const owner = this.sides[this.ball.owner];
+      owner.ownedTicks++;
+      if (this.ball.zone !== 'M') {
+        this.zoneTicks[this.ball.zone]++;
+        minuteTerr[this.ball.zone]++;
+      }
+      if (this.#inFinalThird() && !(wasFinalThird && roll !== 'turnover')) {
+        owner.stats.finalThirdEntries++;
+      }
+      this.flow.push({ minute, tick, zone: this.ball.zone, owner: this.ball.owner });
+
+      this.#tickBuildUp(rng);
+
+      if (this.#inFinalThird() && rng.chance(this.#tickChanceProb(str))) {
+        const attackerKey = this.ball.owner;
+        const defenderKey = attackerKey === 'home' ? 'away' : 'home';
+        const outcome = this.#resolveChance(
+          attackerKey, this.sides[attackerKey], defenderKey, this.sides[defenderKey]);
+        if (outcome.goal) {
+          this.ball = { zone: 'M', owner: defenderKey }; // conceder kicks off
+        } else if (!outcome.corner) {
+          // Cleared, held, or dead: the defenders restart from their third.
+          this.ball = {
+            zone: defenderKey === 'home' ? 'D' : 'A',
+            owner: defenderKey,
+          };
+        } // corner: the attackers keep the pressure on in the final third
+      }
+    }
+
+    this.#terrWindow.push(minuteTerr);
+    if (this.#terrWindow.length > MOMENTUM_WINDOW) this.#terrWindow.shift();
   }
 
   // Fouls and cards.
@@ -815,22 +1010,6 @@ export class MatchSim {
 
   }
 
-  // Does the attacking team fashion a chance?
-  #phaseChanceCreation(ctx) {
-    const { rng, att, def } = ctx;
-    const atkStrength = this.#strength(att, 'attack');
-    const defStrength = this.#strength(def, 'defense');
-    const mods = MENTALITY_MODS[att.setup.mentality].create *
-      MENTALITY_MODS[def.setup.mentality].concede;
-    // A deep-sitting defence concedes slightly worse chances (concedeQ).
-    const chanceProb = clamp(
-      BASE_CHANCE_PROB * mods * this.#meanMod(def, 'concedeQ') *
-        (2 * atkStrength) / (atkStrength + defStrength),
-      0.06, 0.5
-    );
-    if (rng.chance(chanceProb)) this.#resolveChance(ctx.attackerKey, att, ctx.defenderKey, def);
-  }
-
   // Legs get heavier as the match wears on; high stamina fades slower
   // (ATTR-06). The slope is steeper than the spec's illustrative 1/198 —
   // that constant caps the 90-vs-40 stamina gap at 6.8 points over 90
@@ -861,22 +1040,43 @@ export class MatchSim {
     if (ctx.minute >= this.finalMinute) this.#endStage();
   }
 
+  // Zone-flavoured build-up pool (BALL-09): a long stay in the final third
+  // reads as pressure; a fresh arrival from deep reads as a break. Pool
+  // choice is a pure function of the flow log — the pick is one draw as
+  // ever, so the RNG structure is unchanged by flavour.
+  #chanceBuildPool() {
+    const n = this.flow.length;
+    if (n >= 4) {
+      const recent = this.flow.slice(n - 4);
+      const owner = recent[3].owner;
+      const settled = recent.every((f) => f.owner === owner &&
+        (owner === 'home' ? f.zone === 'A' : f.zone === 'D'));
+      if (settled) return COMMENTARY.chanceCamped;
+      const deep = recent.some((f) =>
+        f.owner === owner && (owner === 'home' ? f.zone === 'D' : f.zone === 'A'));
+      if (deep) return COMMENTARY.chanceBreak;
+    }
+    return COMMENTARY.chanceBuild;
+  }
+
+  // Resolve a chance for the attacker. Returns { goal, corner } so the
+  // ball model (EE-5) can place the restart.
   #resolveChance(attackerKey, att, defenderKey, def) {
     const rng = this.rng;
     const minute = this.minute;
     const shooterEntry = this.#pick(att, SHOOT_WEIGHT, ['DF', 'MF', 'FW'], 'shootW');
-    if (!shooterEntry) return;
+    if (!shooterEntry) return { goal: false, corner: false };
     const shooter = shooterEntry.player;
 
     att.stats.shots++;
     this.#line(att, shooter).shots++;
     this.#log(minute, 'chance', attackerKey, shooter,
-      fill(rng.pick(COMMENTARY.chanceBuild), {
+      fill(rng.pick(this.#chanceBuildPool()), {
         player: shooter.name,
         team: att.setup.name,
         opponent: def.setup.name,
       }),
-      { playerId: pid(shooter) });
+      { playerId: pid(shooter), zone: this.ball.zone });
 
     const missProb = clamp(0.42 - attrOf(shooter, 'finishing') * 0.0015, 0.2, 0.4);
     if (rng.chance(missProb)) {
@@ -884,7 +1084,7 @@ export class MatchSim {
       this.#log(minute, 'miss', attackerKey, shooter,
         fill(rng.pick(COMMENTARY.miss), { player: shooter.name }),
         { playerId: pid(shooter) });
-      return;
+      return { goal: false, corner: false };
     }
     if (rng.chance(0.22)) {
       this.#rate(att, shooter, RATING.shotOff);
@@ -900,8 +1100,9 @@ export class MatchSim {
         att.stats.corners++;
         this.#log(minute, 'corner', attackerKey, null,
           fill(rng.pick(COMMENTARY.corner), { team: att.setup.name }));
+        return { goal: false, corner: true };
       }
-      return;
+      return { goal: false, corner: false };
     }
 
     att.stats.onTarget++;
@@ -945,20 +1146,22 @@ export class MatchSim {
           assistId,
           score: { home: this.score.home, away: this.score.away },
         });
-    } else {
-      if (keeperEntry) {
-        this.#line(def, keeperEntry.player).saves++;
-        this.#rate(def, keeperEntry.player, RATING.save);
-      }
-      this.#log(minute, 'save', attackerKey, shooter,
-        fill(rng.pick(COMMENTARY.save), { player: shooter.name }),
-        { shooterId: pid(shooter), keeperId: keeperEntry ? pid(keeperEntry.player) : null });
-      if (rng.chance(0.35)) {
-        att.stats.corners++;
-        this.#log(minute, 'corner', attackerKey, null,
-          fill(rng.pick(COMMENTARY.corner), { team: att.setup.name }));
-      }
+      return { goal: true, corner: false };
     }
+    if (keeperEntry) {
+      this.#line(def, keeperEntry.player).saves++;
+      this.#rate(def, keeperEntry.player, RATING.save);
+    }
+    this.#log(minute, 'save', attackerKey, shooter,
+      fill(rng.pick(COMMENTARY.save), { player: shooter.name }),
+      { shooterId: pid(shooter), keeperId: keeperEntry ? pid(keeperEntry.player) : null });
+    if (rng.chance(0.35)) {
+      att.stats.corners++;
+      this.#log(minute, 'corner', attackerKey, null,
+        fill(rng.pick(COMMENTARY.corner), { team: att.setup.name }));
+      return { goal: false, corner: true };
+    }
+    return { goal: false, corner: false };
   }
 
   #endStage() {
@@ -1076,10 +1279,17 @@ export class MatchSim {
           ? { home: this.shootout.home, away: this.shootout.away } : null,
       });
 
-    const total = this.sides.home.possessionMinutes + this.sides.away.possessionMinutes;
+    const owned = this.sides.home.ownedTicks + this.sides.away.ownedTicks;
     this.sides.home.stats.possession = Math.round(
-      (this.sides.home.possessionMinutes / Math.max(1, total)) * 100);
+      (this.sides.home.ownedTicks / Math.max(1, owned)) * 100);
     this.sides.away.stats.possession = 100 - this.sides.home.stats.possession;
+
+    // Territory (EE-5): share of final-third ticks spent in each side's
+    // attacking third, regardless of who had the ball there.
+    const thirds = this.zoneTicks.A + this.zoneTicks.D;
+    this.sides.home.stats.territoryPct = thirds === 0 ? 50 :
+      Math.round((this.zoneTicks.A / thirds) * 100);
+    this.sides.away.stats.territoryPct = 100 - this.sides.home.stats.territoryPct;
   }
 
   simulateToEnd() {
@@ -1113,6 +1323,7 @@ export class MatchSim {
       injuries: this.injuries,
       subsUsed: { home: this.sides.home.subsUsed, away: this.sides.away.subsUsed },
       timeline: this.trackTimeline ? this.timeline : null,
+      flow: this.flow,
     };
   }
 }

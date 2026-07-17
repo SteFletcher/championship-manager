@@ -1076,6 +1076,9 @@ function kickOff() {
   $('commentary').innerHTML = '';
   $('pitch-home-label').textContent = sim.sides.home.setup.name;
   $('pitch-away-label').textContent = sim.sides.away.setup.name;
+  $('terr-home-label').textContent = sim.sides.home.setup.shortName;
+  $('terr-away-label').textContent = sim.sides.away.setup.shortName;
+  updateTerritoryBar();
   updateScoreboard();
   renderPitch();
   renderMatchPlayerTable();
@@ -1115,6 +1118,7 @@ function doTick() {
   const m = state.match;
   const events = m.sim.playMinute();
   updateScoreboard();
+  updateTerritoryBar();
   for (const e of events) appendCommentary(e);
   if (m.speed !== 0 || m.sim.finished) {
     renderPitch();
@@ -1142,6 +1146,14 @@ function pauseMatch(reason) {
   renderSubPanel();
   renderPitch();
   renderMatchPlayerTable();
+}
+
+// EE-5: the CM-style territory bar — the last ten minutes of ball
+// location, filling toward whichever end is under siege.
+function updateTerritoryBar() {
+  const m = state.match;
+  if (!m) return;
+  $('terr-fill').style.width = `${m.sim.recentTerritory()}%`;
 }
 
 function updateScoreboard() {
@@ -1407,7 +1419,9 @@ function showFullTime() {
     `<span class="motm-label">Man of the match:</span> ${esc(motm.name)} (${esc(motm.team)}) — ${motm.rating.toFixed(1)}`;
 
   const rows = [
-    ['Possession %', 'possession'], ['Shots', 'shots'], ['On target', 'onTarget'],
+    ['Possession %', 'possession'], ['Territory %', 'territoryPct'],
+    ['Final ⅓ entries', 'finalThirdEntries'],
+    ['Shots', 'shots'], ['On target', 'onTarget'],
     ['Corners', 'corners'], ['Fouls', 'fouls'], ['Yellow cards', 'yellowCards'], ['Red cards', 'redCards'],
   ];
   $('stats-rows').innerHTML = rows.map(([label, key]) => {

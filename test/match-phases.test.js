@@ -71,26 +71,26 @@ test('the phase list is the loop: removing a phase skips exactly that behaviour'
   assert.ok(control.stats.home.fouls + control.stats.away.fouls > 0);
 });
 
-test('phases share one context: chance creation consumes the possession winner', () => {
+test('phases share one context: ball flow runs once per minute on it', () => {
   const perMinute = [];
   let current = null;
   const sim = new MatchSim(home, away, {
     seed: 17,
     timeline: false,
     phaseHook: (name, ctx) => {
-      if (name === 'possession') current = { ctx, attacker: ctx.attackerKey };
-      if (name === 'chanceCreation') {
+      if (name === 'aiPolicies') current = ctx;
+      if (name === 'ballFlow') {
         perMinute.push({
-          sameObject: ctx === current.ctx,
-          sameAttacker: ctx.attackerKey === current.attacker,
-          validAttacker: ['home', 'away'].includes(ctx.attackerKey),
+          sameObject: ctx === current,
+          validBall: ['D', 'M', 'A'].includes(sim.ball.zone) &&
+            ['home', 'away'].includes(sim.ball.owner),
         });
       }
     },
   });
   sim.simulateToEnd();
   assert.equal(perMinute.length, sim.minute);
-  assert.ok(perMinute.every((m) => m.sameObject && m.sameAttacker && m.validAttacker));
+  assert.ok(perMinute.every((m) => m.sameObject && m.validBall));
 });
 
 test('an observational phase hook does not change the result', () => {

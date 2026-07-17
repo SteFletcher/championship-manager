@@ -110,7 +110,7 @@ test('explicit defaults are a no-op for full-squad setups too', () => {
 
 // --- Statistical direction tests (fixed seed set, paired control) -----------
 
-const SIMS = 300;
+const SIMS = 500;
 
 function runBatch(instructions) {
   const t = { fb: 0, scored: 0, conceded: 0, oppPasses: 0, tackles: 0, fouls: 0, cards: 0 };

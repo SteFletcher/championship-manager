@@ -199,12 +199,13 @@
   shootout: {home, away} | null,
   playedMinutes,
   events: [{minute, type, side, player, text, data}],  // data: machine-readable payload (EE-1)
-  stats: {home: SideStats, away: SideStats},
+  stats: {home: SideStats, away: SideStats},   // incl. territoryPct, finalThirdEntries (EE-5)
   scorers: {home: [{player,minute}], away: [...]},
   playerStats: {home: StatLine[], away: StatLine[]},
   injuries: [{side, id, player, minute, weeks}],
   subsUsed: {home, away},
-  timeline: Snapshot[] | null
+  timeline: Snapshot[] | null,
+  flow: [{minute, tick, zone, owner}]   // EE-5: per-tick ball location
 }</code></pre>
 
       <h2>6. Competition Entities</h2>

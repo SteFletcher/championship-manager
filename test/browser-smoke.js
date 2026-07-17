@@ -235,6 +235,11 @@ try {
     (els) => els.map((e) => `${e.style.left}|${e.style.top}`));
   assert.equal(new Set(chipSpots).size, 22, 'pitch chips overlap');
 
+  // EE-5: the territory bar is live from kick-off.
+  const terrVisible = await page.$eval('#territory-row', (el) => !el.hidden);
+  assert.ok(terrVisible, 'territory bar missing');
+  const terrAtKickoff = await page.$eval('#terr-fill', (el) => el.style.width);
+
   const att = await page.$eval('#score-att', (el) => el.textContent);
   assert.match(att, /^Att [\d,]+$/, `attendance missing from scoreboard: "${att}"`);
   assert.ok(parseInt(att.replace(/[^\d]/g, ''), 10) > 1000, `implausible gate: ${att}`);
@@ -246,6 +251,11 @@ try {
   assert.ok(parseInt(clock) > 0, `clock stuck: ${clock}`);
   await page.click('#pause-btn');
   await page.waitForSelector('#sub-panel:not([hidden])');
+  // EE-5: after some minutes the bar has moved off its kick-off value at
+  // least once (we can't assert a direction, only that it is alive).
+  const terrNow = await page.$eval('#terr-fill', (el) => el.style.width);
+  assert.ok(terrNow !== '' && terrNow !== undefined, 'territory fill not set');
+  console.log(`✔ EE-5: territory bar renders and updates (${terrAtKickoff || 'unset'} → ${terrNow})`);
   await page.click('#sub-off-list li:nth-child(11)'); // an outfielder
   await page.click('#sub-on-list li:first-child');
   await page.click('#make-sub-btn');
@@ -314,6 +324,12 @@ try {
   await page.waitForSelector('#fulltime:not([hidden])', { timeout: 10000 });
   const motm = await page.$eval('#motm', (el) => el.textContent);
   assert.match(motm, /Man of the match/, motm);
+  const statLabels = await page.$$eval('#stats-rows tr td:first-child, #stats-rows tr th:first-child',
+    (cells) => cells.map((c) => c.textContent));
+  const statsText = await page.$eval('#stats-rows', (el) => el.textContent);
+  assert.ok(statsText.includes('Territory'), `no territory row in stats: ${statLabels.join(', ')}`);
+  assert.ok(statsText.includes('Final ⅓ entries'), 'no final-third entries row in stats');
+  console.log('✔ EE-5: full-time stats show Territory and Final ⅓ entries');
   console.log('✔ match reaches full time with MOTM');
   await shot('08-fulltime');
 

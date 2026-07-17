@@ -63,16 +63,18 @@
       </div>
 
       <h2>2. Match Simulation Engine</h2>
-      <p>Source: <code>src/engine/match.js</code> (~1,100 LOC). The most complex subsystem.
+      <p>Source: <code>src/engine/match.js</code> (~1,300 LOC). The most complex subsystem.
       Since EE-1 the minute loop is an ordered pipeline of named phases sharing a minute
-      context (<code>halfTimeWhistle → aiPolicies → possession → buildUp → discipline →
-      injuries → chanceCreation → fatigue → snapshot → clock</code>), pinned by
-      golden-master fixtures and a statistical invariant suite; since EE-3 its decision
-      points read the eight real attributes via <code>attrOf()</code>; and since EE-4
-      per-slot player instructions scale contribution splits, pick weights, pass
-      completion, foul rates, chance quality, and fatigue (exact no-ops at defaults). See
-      <a href="11-engine-evolution.html">11 · Engine Evolution</a> and the EE-1/EE-3/EE-4
-      milestone designs for the deltas.</p>
+      context (<code>halfTimeWhistle → aiPolicies → ballFlow → discipline →
+      injuries → fatigue → snapshot → clock</code>), pinned by golden-master fixtures
+      and a statistical invariant suite; since EE-3 its decision points read the eight
+      real attributes via <code>attrOf()</code>; since EE-4 per-slot player instructions
+      scale contribution splits, pick weights, pass completion, foul rates, chance
+      quality, and fatigue (exact no-ops at defaults); and since EE-5 the
+      <code>ballFlow</code> phase simulates ball location — a zone/possession state
+      machine advanced three ticks a minute, replacing the old possession, build-up, and
+      chance-creation phases. See <a href="11-engine-evolution.html">11 · Engine
+      Evolution</a> and the milestone designs for the deltas.</p>
 
       <h3>2.1 Public API</h3>
       <pre><code>class MatchSim {
@@ -102,22 +104,28 @@ simulateMatch(home, away, options)   // convenience: one-shot → MatchResult</c
       <h3>2.3 The Per-Minute Loop</h3>
       <div class="diagram">
 <pre>
-playMinute() — phase pipeline (EE-1):
+playMinute() — phase pipeline (EE-1, ball model EE-5):
   halfTimeWhistle   if minute == 46: log half-time
   aiPolicies        for each side: #aiTacticsPolicy ; #autoSubPolicy
-  possession        resolve possession (midfield battle × home boost)
-  buildUp           quiet build-up: passes (3–8) + maybe a tackle → feeds live ratings
-                        defenders' press shifts pass completion (oppPass) and
-                        tackle attempts/picks (tackleW) — EE-4
+  ballFlow          3 ticks; per tick the owning side rolls advance/hold/turnover:
+                        advance 0.34 × zoneStep × mentality × momentum(±12%)
+                        hold    0.38 × mentality × final-third stickiness (1.35 in A)
+                        turnover 0.28 × keep-quality × press (tackleW → ×1.25 high)
+                        zoneStep: D→M midfield ratio · M→A attack/defence ratio
+                        (all quality ratios tempered ^0.75)
+                    build-up bookkeeping per tick: passes (1–3, oppPass shift),
+                        tackles (0.117 × tackleW) — same volumes as pre-EE-5
+                    chance gate — only in the owner's final third:
+                        0.17 × quality × defender concede mod × concedeQ per tick
+                        shooter by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3) × shootW
+                        miss (42%−finishing×0.15%) · block (22%) ·
+                        on-target → goal prob = finishing / (finishing + keeper×4)
+                        goal → kickoff at M (conceder) · corner → pressure stays ·
+                        otherwise → defenders restart in their third
   discipline        fouls &amp; cards (per side, 11% × mean foulCh — EE-4):
                         straight red 0.6% · yellow 11% · second-yellow → red
   injuries          0.18% per side/min, weighted by injuryProne &amp; low condition:
                         AI auto-subs immediately; user side left short until manager reacts
-  chanceCreation    BASE_CHANCE_PROB × mentality mods × concedeQ × attack/defence ratio:
-                        shooter picked by SHOOT_WEIGHT (FW=3, MF=1, DF=0.3) × shootW
-                        miss (42%−finishing×0.15%) · block (22%) ·
-                        on-target → goal prob = finishing / (finishing + keeper×4)
-                        assist awarded 60% (ASSIST_WEIGHT MF=2, FW=1.5, DF=0.5)
   fatigue           condition decay (GK 0.08/min, others stamina-scaled ~0.30/min)
                         × per-player instruction decay (EE-4)
   snapshot          push timeline snapshot

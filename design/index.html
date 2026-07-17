@@ -12,7 +12,7 @@
     <span class="brand">⚽ CHAMPMAN</span>
     <span class="crumb">Design Documentation</span>
     <span class="spacer"></span>
-    <span class="meta">v0.4 · updated 2026-07-16</span>
+    <span class="meta">v0.5 · updated 2026-07-17</span>
   </header>
 
   <main class="wrap">
@@ -48,10 +48,10 @@
       </div>
 
       <div class="stats">
-        <div class="stat"><span class="num">~6,200</span><span class="lbl">Lines of app code</span></div>
+        <div class="stat"><span class="num">~6,600</span><span class="lbl">Lines of app code</span></div>
         <div class="stat"><span class="num">11</span><span class="lbl">Engine + data modules</span></div>
         <div class="stat"><span class="num">40</span><span class="lbl">Real 1995/96 clubs</span></div>
-        <div class="stat"><span class="num">213</span><span class="lbl">Automated tests</span></div>
+        <div class="stat"><span class="num">226</span><span class="lbl">Automated tests</span></div>
         <div class="stat"><span class="num">0</span><span class="lbl">Build steps</span></div>
       </div>
 
@@ -147,7 +147,7 @@
           <tr><td>Squad model</td><td>18 real period players per club · 10 detailed positions with familiarity · 8 attributes (1–99)</td></tr>
           <tr><td>Persistence</td><td>localStorage, JSON, <code>SAVE_VERSION 9</code>, additive migrations from v6</td></tr>
           <tr><td>Determinism</td><td>Single seeded mulberry32 RNG; identical seed → identical career</td></tr>
-          <tr><td>Test suite</td><td>213 engine/game tests (node:test) incl. golden masters &amp; statistical invariants + 1 puppeteer browser smoke</td></tr>
+          <tr><td>Test suite</td><td>226 engine/game tests (node:test) incl. golden masters &amp; statistical invariants + 1 puppeteer browser smoke</td></tr>
         </tbody>
       </table>
 
@@ -173,14 +173,16 @@
         three <a href="11-engine-evolution.html">Engine Evolution</a> milestones shipped:
         EE-1 (phase-pipeline core + golden-master/statistical regression armour),
         EE-2 (ten detailed positions, formation geometry, familiarity — save v7), and
-        EE-3 (eight real attributes driving the engine — save v8), and EE-4 (per-player
-        instructions with the tactics-pitch click panel — save v9). The facts above reflect
+        EE-3 (eight real attributes driving the engine — save v8), EE-4 (per-player
+        instructions with the tactics-pitch click panel — save v9), and EE-5 (the zone
+        ball model with possession chains and the live territory bar — no save change).
+        The facts above reflect
         the current build; the deep-dive docs 03/04 carry inline notes where the EE
         milestones changed the original design.</p>
       </blockquote>
     </article>
   </main>
 
-  <footer>Champman design documentation · generated 2026-07-11 · updated 2026-07-16 · ⚽</footer>
+  <footer>Champman design documentation · generated 2026-07-11 · updated 2026-07-17 · ⚽</footer>
 </body>
 </html>
